@@ -1,0 +1,2593 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS — لوحة تحكم المتاجر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* ─── Variables ──────────────────────────────────────────────── */
+:root {
+  --green:     #1b5e20;
+  --green-mid: #2e7d32;
+  --green-lt:  #e8f5e9;
+  --gold:      #C9A24B;
+  --gold-lt:   #fff8e7;
+  --danger:    #dc2626;
+  --danger-lt: #fef2f2;
+  --warn:      #d97706;
+  --warn-lt:   #fffbeb;
+  --gray:      #6b7280;
+  --border:    #e5e7eb;
+  --bg:        #f0f4f0;
+  --surface:   #ffffff;
+  --text:      #1f2937;
+  --sidebar:   250px;
+  --radius:    14px;
+  --shadow:    0 4px 24px rgba(0,0,0,0.09);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.14);
+}
+
+/* ─── Reset ──────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Tajawal',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit}
+
+/* ─── Layout ─────────────────────────────────────────────────── */
+#appScreen{display:flex;min-height:100vh}
+
+.sidebar{
+  width:var(--sidebar);
+  background:var(--green);
+  display:flex;flex-direction:column;
+  position:fixed;top:0;right:0;bottom:0;
+  z-index:100;
+  box-shadow:var(--shadow-lg);
+}
+.sidebar-logo{
+  padding:28px 20px 20px;
+  border-bottom:1px solid rgba(255,255,255,0.12);
+}
+.sidebar-logo h2{color:#fff;font-size:20px;font-weight:900;line-height:1.2}
+.sidebar-logo span{color:var(--gold);font-size:12px;font-weight:500;display:block;margin-top:2px}
+.sidebar-nav{flex:1;padding:20px 12px;display:flex;flex-direction:column;gap:6px}
+.nav-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 16px;border-radius:10px;
+  color:rgba(255,255,255,0.75);font-size:15px;font-weight:500;
+  cursor:pointer;transition:all 0.18s;border:none;background:none;width:100%;text-align:right;
+}
+.nav-item:hover{background:rgba(255,255,255,0.1);color:#fff}
+.nav-item.active{background:rgba(255,255,255,0.18);color:#fff;font-weight:700}
+.nav-item .icon{font-size:18px;width:24px;text-align:center}
+.sidebar-footer{padding:20px 12px;border-top:1px solid rgba(255,255,255,0.12)}
+.logout-btn{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-radius:10px;
+  color:rgba(255,255,255,0.6);font-size:14px;
+  cursor:pointer;transition:all 0.18s;border:none;background:none;width:100%;
+}
+.logout-btn:hover{color:#fff;background:rgba(220,38,38,0.2)}
+
+.main-wrap{
+  margin-right:var(--sidebar);
+  flex:1;padding:32px;
+  max-width:calc(100vw - var(--sidebar));
+}
+
+/* ─── Page Header ────────────────────────────────────────────── */
+.page-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:28px;flex-wrap:wrap;gap:12px;
+}
+.page-header h1{font-size:26px;font-weight:800;color:var(--green)}
+.page-header .sub{color:var(--gray);font-size:14px;margin-top:3px}
+
+/* ─── Stat Cards ─────────────────────────────────────────────── */
+.stats-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:16px;margin-bottom:28px;
+}
+.stat-card{
+  background:var(--surface);border-radius:var(--radius);
+  padding:22px 20px;box-shadow:var(--shadow);
+  border-right:4px solid var(--gold);
+  transition:transform 0.18s;
+}
+.stat-card:hover{transform:translateY(-2px)}
+.stat-card.green{border-color:var(--green)}
+.stat-card.danger{border-color:var(--danger)}
+.stat-card.warn{border-color:var(--warn)}
+.stat-label{font-size:13px;color:var(--gray);font-weight:500}
+.stat-value{font-size:32px;font-weight:900;color:var(--green);margin-top:6px;line-height:1}
+.stat-sub{font-size:12px;color:var(--gray);margin-top:6px}
+
+/* ─── Card ───────────────────────────────────────────────────── */
+.card{
+  background:var(--surface);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:24px;
+  margin-bottom:24px;
+}
+.card-header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:20px;flex-wrap:wrap;gap:12px;
+}
+.card-title{font-size:18px;font-weight:700;color:var(--green)}
+
+/* ─── Table ──────────────────────────────────────────────────── */
+.table-wrap{overflow-x:auto;margin:-4px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{
+  text-align:right;padding:10px 14px;
+  background:var(--bg);color:var(--gray);
+  font-size:12px;font-weight:600;letter-spacing:0.3px;
+  border-bottom:2px solid var(--border);
+}
+td{
+  padding:14px;border-bottom:1px solid var(--border);
+  vertical-align:middle;
+}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafcfa}
+.store-name{font-weight:700;color:var(--text);font-size:15px}
+.store-owner{font-size:13px;color:var(--gray);margin-top:2px}
+
+/* ─── Badges ─────────────────────────────────────────────────── */
+.badge{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:4px 12px;border-radius:999px;
+  font-size:12px;font-weight:600;
+}
+.badge-active{background:var(--green-lt);color:var(--green)}
+.badge-warn{background:var(--warn-lt);color:var(--warn)}
+.badge-danger{background:var(--danger-lt);color:var(--danger)}
+.badge-gray{background:#f3f4f6;color:#6b7280}
+
+/* ─── Buttons ────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:10px 18px;border-radius:10px;border:none;
+  font-size:14px;font-weight:600;transition:all 0.18s;
+}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--green);color:#fff}
+.btn-primary:hover{background:var(--green-mid)}
+.btn-gold{background:var(--gold);color:#fff}
+.btn-gold:hover{background:#b8912f}
+.btn-outline{background:#fff;color:var(--green);border:2px solid var(--green)}
+.btn-outline:hover{background:var(--green-lt)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:6px 12px;font-size:13px;border-radius:8px}
+.btn-icon{padding:7px;border-radius:8px;background:#f3f4f6;border:none;font-size:16px;transition:all 0.15s}
+.btn-icon:hover{background:var(--green-lt)}
+.btn-icon.danger:hover{background:var(--danger-lt)}
+
+/* Action group */
+.actions-cell{display:flex;gap:6px;align-items:center}
+
+/* ─── Alert Banner ───────────────────────────────────────────── */
+.alert-banner{
+  background:var(--warn-lt);border:1px solid #fcd34d;
+  border-radius:10px;padding:14px 18px;margin-bottom:20px;
+  display:flex;align-items:center;gap:10px;font-size:14px;color:var(--warn);font-weight:500;
+}
+
+/* ─── Modal Overlay ──────────────────────────────────────────── */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.5);
+  display:flex;align-items:center;justify-content:center;
+  z-index:1000;padding:20px;
+}
+.modal{
+  background:#fff;border-radius:var(--radius);
+  width:100%;max-width:640px;max-height:90vh;
+  overflow-y:auto;box-shadow:var(--shadow-lg);
+}
+.modal-header{
+  padding:22px 24px 0;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.modal-header h2{font-size:20px;font-weight:800;color:var(--green)}
+.modal-close{
+  background:none;border:none;font-size:22px;color:var(--gray);
+  cursor:pointer;padding:4px;border-radius:6px;
+  line-height:1;transition:all 0.15s;
+}
+.modal-close:hover{background:var(--border)}
+.modal-body{padding:20px 24px}
+.modal-footer{
+  padding:16px 24px;border-top:1px solid var(--border);
+  display:flex;justify-content:flex-end;gap:10px;
+}
+
+/* ─── Form ───────────────────────────────────────────────────── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid .full{grid-column:1/-1}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:600;color:var(--text)}
+.field input,.field select,.field textarea{
+  padding:11px 14px;border:2px solid var(--border);border-radius:10px;
+  font-size:14px;color:var(--text);transition:border-color 0.15s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  outline:none;border-color:var(--green);
+}
+.field .hint{font-size:12px;color:var(--gray)}
+.section-label{
+  font-size:12px;font-weight:700;color:var(--gray);letter-spacing:0.5px;
+  text-transform:uppercase;padding-bottom:8px;
+  border-bottom:2px solid var(--border);margin:16px 0 12px;
+}
+
+/* ─── Slide-over (Orders Panel) ──────────────────────────────── */
+.slide-over{
+  position:fixed;inset:0;z-index:200;display:flex;
+}
+.slide-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.4)}
+.slide-panel{
+  position:absolute;left:0;top:0;bottom:0;
+  width:min(680px,95vw);background:#fff;
+  box-shadow:-8px 0 40px rgba(0,0,0,0.15);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.slide-header{
+  padding:20px 24px;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;background:var(--green);
+}
+.slide-header h2{color:#fff;font-size:18px;font-weight:800}
+.slide-close{background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:20px;border-radius:8px;padding:4px 8px;cursor:pointer}
+.slide-close:hover{background:rgba(255,255,255,0.25)}
+.slide-stats{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+  padding:16px 20px;background:var(--green-lt);border-bottom:1px solid var(--border);
+}
+.slide-stat{text-align:center}
+.slide-stat .val{font-size:22px;font-weight:800;color:var(--green)}
+.slide-stat .lbl{font-size:12px;color:var(--gray)}
+.slide-body{flex:1;overflow-y:auto;padding:20px}
+.slide-body table th{background:#fff;font-size:11px}
+.slide-body table td{font-size:13px}
+.order-items-mini{font-size:12px;color:var(--gray);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ─── Onboarding Message Modal ───────────────────────────────── */
+.msg-box{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:10px;padding:18px;
+  font-size:14px;line-height:1.8;white-space:pre-line;
+  color:var(--text);max-height:280px;overflow-y:auto;
+}
+
+/* ─── Toast ──────────────────────────────────────────────────── */
+.toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+  background:#1f2937;color:#fff;padding:12px 24px;
+  border-radius:999px;font-size:14px;font-weight:500;
+  box-shadow:var(--shadow-lg);z-index:9999;
+  opacity:0;transition:opacity 0.3s;pointer-events:none;
+}
+.toast.show{opacity:1}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--danger)}
+.toast.warn{background:var(--warn)}
+
+/* ─── Login Screen ───────────────────────────────────────────── */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--green) 0%,var(--green-mid) 100%);
+  padding:20px;
+}
+.login-card{
+  background:#fff;border-radius:20px;padding:40px;
+  width:100%;max-width:420px;box-shadow:var(--shadow-lg);
+}
+.login-logo{text-align:center;margin-bottom:30px}
+.login-logo .brand{font-size:32px;font-weight:900;color:var(--green)}
+.login-logo .sub{font-size:14px;color:var(--gray);margin-top:4px}
+.login-field{margin-bottom:16px}
+.login-field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text)}
+.login-field input{
+  width:100%;padding:13px 16px;border:2px solid var(--border);
+  border-radius:12px;font-size:15px;font-family:inherit;
+  transition:border-color 0.15s;
+}
+.login-field input:focus{outline:none;border-color:var(--green)}
+.login-submit{
+  width:100%;padding:14px;border:none;border-radius:12px;
+  background:var(--green);color:#fff;font-size:16px;font-weight:700;
+  font-family:inherit;cursor:pointer;margin-top:8px;transition:background 0.18s;
+}
+.login-submit:hover{background:var(--green-mid)}
+.login-error{
+  text-align:center;color:var(--danger);font-size:14px;
+  margin-bottom:14px;display:none;
+}
+
+/* ─── Empty State ────────────────────────────────────────────── */
+.empty-state{text-align:center;padding:60px 20px;color:var(--gray)}
+.empty-state .icon{font-size:56px;margin-bottom:12px}
+.empty-state h3{color:var(--text);margin-bottom:8px;font-size:18px}
+.empty-state p{font-size:14px}
+
+/* ─── Delete confirm ─────────────────────────────────────────── */
+.del-modal{max-width:420px;text-align:center;padding:32px}
+.del-modal .icon{font-size:52px;margin-bottom:14px}
+.del-modal h3{font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px}
+.del-modal p{color:var(--gray);font-size:14px;margin-bottom:24px}
+.del-modal .del-btns{display:flex;gap:12px;justify-content:center}
+
+/* ─── Image upload area ─────────────────────────────────────── */
+.img-upload-area{
+  width:100%;min-height:80px;border:2px dashed var(--border);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background:var(--bg);cursor:pointer;transition:border-color 0.15s;
+}
+.img-upload-area:hover{border-color:var(--green)}
+.img-upload-area img{width:100%;max-height:120px;object-fit:contain;display:block}
+.img-placeholder{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--gray);padding:14px}
+.img-placeholder .ph-icon{font-size:26px}
+.img-placeholder .ph-text{font-size:11px;font-weight:500}
+
+/* ─── Plans Editor ──────────────────────────────────────────────── */
+.plans-editor{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.plan-edit-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;border-top:5px solid var(--border)}
+.plan-edit-card[data-plan="starter"]{border-top-color:#6b7280}
+.plan-edit-card[data-plan="pro"]{border-top-color:var(--green)}
+.plan-edit-card[data-plan="premium"]{border-top-color:var(--gold)}
+.plan-edit-header{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.plan-emoji-input{width:56px;font-size:22px;border:2px solid var(--border);border-radius:10px;padding:8px 4px;text-align:center;outline:none;cursor:pointer;transition:border-color .15s}
+.plan-emoji-input:focus{border-color:var(--green)}
+.plan-name-input{flex:1;font-size:16px;font-weight:700;border:2px solid var(--border);border-radius:10px;padding:10px 12px;min-width:110px;outline:none;font-family:inherit;transition:border-color .15s}
+.plan-name-input:focus{border-color:var(--green)}
+.plan-price-wrap{display:flex;align-items:center;gap:6px;background:var(--bg);border-radius:10px;padding:6px 12px;flex-shrink:0}
+.plan-price-input{width:70px;border:none;background:transparent;font-size:20px;font-weight:900;color:var(--green);text-align:center;outline:none;font-family:inherit}
+.plan-price-unit{font-size:12px;color:var(--gray);white-space:nowrap}
+.plan-section-label{font-size:11px;font-weight:700;color:var(--gray);letter-spacing:.5px;padding:10px 0 8px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.sys-features{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.sys-feat-title{font-size:11px;font-weight:700;color:var(--gray);letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:4px}
+.sys-feat-row{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;user-select:none}
+.sys-feat-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.display-features{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;min-height:10px}
+.df-row{display:flex;align-items:center;gap:8px}
+.df-toggle{display:flex;align-items:center;flex-shrink:0}
+.df-toggle input[type=checkbox],.df-chk{width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.df-text{flex:1;border:1.5px solid var(--border);border-radius:8px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit;transition:border-color .15s;direction:rtl}
+.df-text:focus{border-color:var(--green)}
+.df-del{background:none;border:none;color:#9ca3af;cursor:pointer;font-size:15px;padding:4px 6px;border-radius:6px;line-height:1;flex-shrink:0}
+.df-del:hover{color:var(--danger);background:#fef2f2}
+.btn-add-feature{background:var(--primary-lt);border:2px dashed var(--green);color:var(--green);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;width:100%;font-family:inherit;transition:.15s;margin-top:4px}
+.btn-add-feature:hover{background:var(--green);color:#fff}
+
+/* ─── Bank Card ───────────────────────────────────────────────── */
+.bank-card{background:linear-gradient(135deg,var(--green) 0%,#2e7d32 100%);border-radius:var(--radius);padding:28px;color:#fff;margin-bottom:24px;box-shadow:var(--shadow-lg)}
+.bank-card-label{font-size:11px;opacity:0.7;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px}
+.bank-card-row{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.bank-card-field .lbl{font-size:11px;opacity:0.65;margin-bottom:3px}
+.bank-card-field .val{font-size:15px;font-weight:700}
+.bank-card-iban{font-size:18px;font-weight:800;letter-spacing:3px;word-break:break-all;margin-top:12px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.2)}
+.payment-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.15);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;color:#fff;margin-top:10px;margin-left:8px;transition:background 0.15s}
+.payment-chip:hover{background:rgba(255,255,255,0.25)}
+
+/* ─── Guide ───────────────────────────────────────────────────── */
+.guide-msg-box{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:22px;font-size:14px;line-height:2;white-space:pre-line;color:var(--text);max-height:500px;overflow-y:auto}
+
+/* ─── Upgrade Plan Selector ──────────────────────────────────── */
+.plan-select-inline{
+  padding:8px 12px;border:2px solid var(--border);border-radius:9px;
+  font-size:13px;font-family:inherit;outline:none;cursor:pointer;
+  transition:border-color .15s;background:#fff;
+}
+.plan-select-inline:focus{border-color:var(--green)}
+
+/* ─── Payment Popup ──────────────────────────────────────────── */
+#paymentPopup .modal{max-width:460px}
+#paymentPopup .store-pay-info{
+  background:var(--green-lt);border:1px solid var(--green);
+  border-radius:10px;padding:14px 16px;margin-bottom:16px;
+  font-size:15px;font-weight:600;color:var(--green);line-height:1.7;
+}
+#paymentPopup .warn-note{
+  font-size:13px;color:var(--gray);background:var(--bg);
+  border-radius:8px;padding:10px 12px;margin-top:8px;
+}
+.btn-payment{background:var(--gold);color:#fff;font-weight:700}
+.btn-payment:hover{background:#b8912f}
+
+/* ─── Payment Settings section in bankView ───────────────────── */
+.payment-settings-section{
+  border-top:2px solid var(--border);
+  margin-top:8px;padding-top:20px;
+}
+
+/* ─── Subscription Mini-Panel ────────────────────────────────── */
+#subPanel .modal{max-width:480px}
+.sub-panel-store{
+  font-size:16px;font-weight:800;color:var(--green);
+  margin-bottom:16px;padding-bottom:12px;
+  border-bottom:2px solid var(--border);
+}
+.sub-panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sub-panel-grid .full{grid-column:1/-1}
+.sub-toggle-row{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg);border-radius:10px;padding:12px 14px;
+  grid-column:1/-1;
+}
+.sub-toggle-row .stl{font-size:14px;font-weight:600;color:var(--text)}
+.sub-toggle-row .sts{font-size:13px;color:var(--gray);margin-top:2px}
+.toggle-switch{position:relative;display:inline-block;width:48px;height:26px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{
+  position:absolute;cursor:pointer;inset:0;
+  background:#d1d5db;border-radius:999px;transition:.2s;
+}
+.toggle-slider:before{
+  content:"";position:absolute;
+  height:20px;width:20px;left:3px;bottom:3px;
+  background:#fff;border-radius:50%;transition:.2s;
+}
+input:checked + .toggle-slider{background:var(--green)}
+input:checked + .toggle-slider:before{transform:translateX(22px)}
+.store-actions-split{display:flex;flex-direction:column;gap:5px;min-width:128px}
+.btn-sub{background:var(--green-lt);color:var(--green);border:1.5px solid var(--green);font-weight:600}
+.btn-sub:hover{background:var(--green);color:#fff}
+.btn-support{background:#f3f4f6;color:var(--text);border:1.5px solid var(--border);font-weight:600}
+.btn-support:hover{background:#e5e7eb}
+.sc-split-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+@media(max-width:768px){
+  #subPanel .modal{max-width:100%}
+  .sub-panel-grid{grid-template-columns:1fr;gap:12px}
+  .sub-panel-grid .full{grid-column:1}
+  .sub-toggle-row{grid-column:1}
+}
+
+/* ─── Store Cards (mobile list) ─────────────────────────────── */
+.mobile-cards{display:none}
+.desktop-table{display:block}
+.store-card{
+  background:var(--surface);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:16px;margin-bottom:12px;
+  border-right:4px solid var(--green);
+}
+.store-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:8px}
+.store-card-info{flex:1;min-width:0}
+.store-card-info .sn{font-size:16px;font-weight:800;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.store-card-info .so{font-size:13px;color:var(--gray)}
+.store-card-badges{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+.store-card-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.sc-meta-item{background:var(--bg);border-radius:8px;padding:8px 10px}
+.sc-meta-item .scm-lbl{font-size:11px;color:var(--gray);font-weight:600;margin-bottom:2px}
+.sc-meta-item .scm-val{font-size:14px;font-weight:700;color:var(--text)}
+.store-card-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sc-btn{
+  flex:1;min-width:0;
+  padding:9px 4px;border-radius:8px;border:none;
+  font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;
+  background:var(--bg);color:var(--text);transition:all 0.15s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.sc-btn:active{transform:scale(0.97)}
+.sc-btn.primary{background:var(--green);color:#fff}
+.sc-btn.danger{background:var(--danger-lt);color:var(--danger)}
+
+/* ─── Bottom Nav (mobile) ────────────────────────────────────── */
+.bottom-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--green);
+  z-index:200;
+  padding:0;
+  box-shadow:0 -4px 20px rgba(0,0,0,0.18);
+}
+.bottom-nav-inner{
+  display:flex;align-items:stretch;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+.bottom-nav-inner::-webkit-scrollbar{display:none}
+.bnav-item{
+  flex:1;min-width:56px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px 4px 10px;
+  color:rgba(255,255,255,0.65);font-size:10px;font-weight:600;
+  border:none;background:none;cursor:pointer;
+  transition:all 0.15s;gap:3px;
+  white-space:nowrap;
+}
+.bnav-item .bicon{font-size:20px}
+.bnav-item.active{color:#fff;background:rgba(255,255,255,0.15)}
+.bnav-item:active{background:rgba(255,255,255,0.2)}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE — Professional App-like Layout (max-width: 768px)
+   ══════════════════════════════════════════════════════════════ */
+@media(max-width:768px){
+
+  /* ── Base ─────────────────────────────────────────────────── */
+  html,body{overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+  body{font-size:15px;background:#f4f6f4}
+
+  /* ── App Layout ───────────────────────────────────────────── */
+  #appScreen{flex-direction:column}
+  .sidebar{display:none}
+  .bottom-nav{display:block}
+  .main-wrap{
+    margin-right:0;
+    width:100%;
+    padding:0 0 72px;
+    min-height:100vh;
+    max-width:100vw;
+    overflow-x:hidden;
+  }
+
+  /* ── Section padding ──────────────────────────────────────── */
+  #dashView,#storesView,#plansView,#bankView,#guideView,#leadsView{
+    padding:16px 14px;
+  }
+
+  /* ── Sticky Page Header ───────────────────────────────────── */
+  .page-header{
+    position:sticky;top:0;z-index:50;
+    background:rgba(244,246,244,0.96);
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    padding:12px 0 10px;
+    margin-bottom:14px;
+    border-bottom:1px solid var(--border);
+    flex-direction:row;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .page-header h1{font-size:17px;font-weight:800;margin:0;color:var(--green)}
+  .page-header .sub{display:none}
+  .page-header .btn{
+    padding:8px 12px;font-size:12px;
+    white-space:nowrap;border-radius:9px;flex-shrink:0;
+  }
+
+  /* ── Stats Grid ───────────────────────────────────────────── */
+  .stats-grid{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:10px;margin-bottom:14px;
+  }
+  .stat-card{
+    padding:14px 12px;border-radius:14px;
+    border-right:3px solid var(--gold);
+  }
+  .stat-card.green{border-right-color:var(--green)}
+  .stat-card.danger{border-right-color:var(--danger)}
+  .stat-card.warn{border-right-color:var(--warn)}
+  .stat-value{font-size:26px;margin-top:4px}
+  .stat-label{font-size:11px}
+  .stat-sub{display:none}
+
+  /* ── Alert Banner ─────────────────────────────────────────── */
+  .alert-banner{font-size:13px;padding:10px 12px;border-radius:10px}
+
+  /* ── Card ─────────────────────────────────────────────────── */
+  .card{padding:14px;border-radius:14px;margin-bottom:12px}
+  .card-header{margin-bottom:12px}
+  .card-title{font-size:15px}
+
+  /* ── Tables → Cards ───────────────────────────────────────── */
+  .desktop-table{display:none}
+  .mobile-cards{display:block;padding:0}
+
+  /* ── WA Badge ─────────────────────────────────────────────── */
+  .wa-badge{font-size:11px;padding:2px 7px;border-radius:10px;display:inline-block;font-weight:600}
+  .wa-badge.connected{background:#dcfce7;color:#16a34a}
+  .wa-badge.disconnected{background:#fee2e2;color:#dc2626}
+  .wa-badge.pairing{background:#fef9c3;color:#ca8a04}
+  .wa-badge.reconnecting{background:#e0f2fe;color:#0369a1}
+
+  /* ── Store Card polish ────────────────────────────────────── */
+  .store-card{
+    border-radius:14px;padding:14px;
+    margin-bottom:10px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.07);
+  }
+  .store-card-info .sn{font-size:15px}
+  .store-card-info .so{font-size:12px}
+  .sc-meta-item{border-radius:10px;padding:10px}
+  .sc-meta-item .scm-val{font-size:13px}
+  .sc-btn{
+    padding:11px 6px;font-size:12px;border-radius:9px;
+    min-height:40px;
+  }
+
+  /* ── Plans ────────────────────────────────────────────────── */
+  .plans-grid{grid-template-columns:1fr;gap:12px}
+  .plan-card{border-radius:16px}
+  .plan-header{padding:18px 16px 12px}
+  .plan-emoji{font-size:36px}
+  .plan-name{font-size:18px}
+  .plan-price-input{font-size:28px;width:80px}
+  .plan-features{padding:4px 16px 16px}
+  .plan-features li{font-size:13px;padding:6px 0}
+
+  /* ── Bank Card ────────────────────────────────────────────── */
+  .bank-card{
+    padding:18px 16px;border-radius:16px;
+    margin-bottom:16px;
+  }
+  .bank-card-label{font-size:10px;margin-bottom:14px}
+  .bank-card-row{flex-direction:column;gap:10px;margin-bottom:8px}
+  .bank-card-field .val{font-size:14px}
+  .bank-card-iban{font-size:13px;letter-spacing:1px;padding-top:12px;margin-top:8px}
+
+  /* ── Forms ────────────────────────────────────────────────── */
+  .form-grid{grid-template-columns:1fr;gap:14px}
+  .form-grid .full{grid-column:1}
+  .field{gap:7px}
+  .field label{font-size:13px}
+  .field input,
+  .field select,
+  .field textarea{
+    padding:13px 14px;
+    font-size:16px; /* critical: prevents iOS auto-zoom */
+    border-radius:11px;
+    border-width:1.5px;
+    -webkit-appearance:none;
+  }
+  .field .hint{font-size:11px}
+  .section-label{font-size:11px}
+
+  /* ── Modal — Bottom Sheet ─────────────────────────────────── */
+  .overlay{
+    padding:0;align-items:flex-end;
+    background:rgba(0,0,0,0.45);
+  }
+  .modal{
+    width:100%;margin:0;
+    border-radius:22px 22px 0 0;
+    max-height:92vh;
+    box-shadow:0 -8px 40px rgba(0,0,0,0.2);
+  }
+  /* drag handle indicator */
+  .modal::before{
+    content:'';display:block;
+    width:40px;height:4px;
+    background:var(--border);border-radius:2px;
+    margin:12px auto 0;
+  }
+  .modal-header{padding:12px 18px 0}
+  .modal-header h2{font-size:17px}
+  .modal-body{padding:14px 18px;padding-bottom:4px}
+  .modal-footer{
+    padding:12px 18px 20px;
+    flex-direction:column-reverse;gap:8px;
+  }
+  .modal-footer .btn{
+    width:100%;justify-content:center;
+    padding:13px;font-size:15px;border-radius:12px;
+  }
+
+  /* ── Delete Confirm ───────────────────────────────────────── */
+  .del-modal{padding:24px 18px}
+  .del-modal .del-btns{flex-direction:column-reverse;gap:8px}
+  .del-modal .del-btns .btn{width:100%;justify-content:center;padding:13px}
+
+  /* ── Slide Over ───────────────────────────────────────────── */
+  .slide-panel{
+    width:100vw;border-radius:0;
+    left:0;right:0;
+  }
+  .slide-stats{
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;padding:12px 14px;
+  }
+  .slide-stat .val{font-size:18px}
+  .slide-stat .lbl{font-size:11px}
+  .slide-body{padding:14px}
+  .slide-body table th{font-size:10px}
+  .slide-body table td{font-size:12px;padding:10px 8px}
+
+  /* ── Guide ────────────────────────────────────────────────── */
+  .guide-msg-box{
+    max-height:280px;
+    font-size:13px;
+    line-height:1.9;
+    padding:14px;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+  .btn{min-height:42px;border-radius:10px}
+  .btn-sm{min-height:36px;font-size:12px}
+  .btn-icon{min-width:36px;min-height:36px;font-size:15px}
+
+  /* ── Onboarding msg box ───────────────────────────────────── */
+  .msg-box{font-size:13px;line-height:1.8;padding:14px;max-height:240px}
+
+  /* ── Bottom Nav ───────────────────────────────────────────── */
+  .bottom-nav{border-top:1px solid rgba(255,255,255,0.1)}
+  .bnav-item{padding:7px 2px 10px;font-size:9.5px;min-width:50px}
+  .bnav-item .bicon{font-size:21px}
+
+  /* ── Login Screen ─────────────────────────────────────────── */
+  #loginScreen{
+    align-items:stretch;
+    background:linear-gradient(160deg,var(--green) 0%,#1a3a1a 100%);
+  }
+  .login-card{
+    border-radius:26px 26px 0 0;
+    margin-top:auto;
+    min-height:auto;
+    padding:32px 24px 40px;
+    max-width:100%;
+    box-shadow:0 -12px 40px rgba(0,0,0,0.3);
+  }
+  .login-logo{margin-bottom:24px}
+  .login-logo .brand{font-size:28px}
+  .login-logo .sub{font-size:13px}
+  .login-field input{
+    font-size:16px;
+    padding:14px 16px;
+    border-radius:12px;
+  }
+  .login-submit{
+    padding:15px;font-size:16px;
+    border-radius:12px;margin-top:10px;
+  }
+
+  /* ── Toast ────────────────────────────────────────────────── */
+  .toast{
+    bottom:84px; /* above bottom nav */
+    font-size:13px;padding:10px 20px;
+  }
+
+  /* ── Img upload ───────────────────────────────────────────── */
+  .img-upload-area{min-height:70px}
+
+  /* ── Empty state ──────────────────────────────────────────── */
+  .empty-state{padding:40px 16px}
+  .empty-state .icon{font-size:44px}
+  .empty-state h3{font-size:16px}
+  .empty-state p{font-size:13px}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ LOGIN ══════════════════════════════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="brand">🤖 NEXUS</div>
+      <div class="sub">لوحة تحكم المتاجر — Master Panel</div>
+    </div>
+    <div id="loginError" class="login-error">كلمة المرور خاطئة ❌</div>
+    <div class="login-field">
+      <label>كلمة المرور</label>
+      <input id="loginPass" type="password" placeholder="••••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-submit" onclick="doLogin()">دخول ←</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════ APP ═══════════════════════════════════ -->
+<div id="appScreen" style="display:none">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>🤖 NEXUS</h2>
+      <span>لوحة تحكم المتاجر</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" id="navDash" onclick="showView('dash')">
+        <span class="icon">📊</span><span class="label">لوحة التحكم</span>
+      </button>
+      <button class="nav-item" id="navStores" onclick="showView('stores')">
+        <span class="icon">🏪</span><span class="label">إدارة المتاجر</span>
+      </button>
+      <button class="nav-item" id="navPlans" onclick="showView('plans')">
+        <span class="icon">📦</span><span class="label">الباقات والأسعار</span>
+      </button>
+      <button class="nav-item" id="navBank" onclick="showView('bank')">
+        <span class="icon">💳</span><span class="label">حسابي البنكي</span>
+      </button>
+      <button class="nav-item" id="navGuide" onclick="showView('guide')">
+        <span class="icon">📖</span><span class="label">دليل الإعداد</span>
+      </button>
+      <button class="nav-item" id="navLeads" onclick="showView('leads')">
+        <span class="icon">🙋</span><span class="label">عملاء المنصة</span>
+      </button>
+      <button class="nav-item" onclick="window.open('/try.html','_blank')">
+        <span class="icon">🔌</span><span class="label">جرّب الربط</span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="logout-btn" onclick="doLogout()">
+        <span>🚪</span><span>تسجيل الخروج</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Bottom Nav (mobile only) -->
+  <nav class="bottom-nav">
+    <div class="bottom-nav-inner">
+      <button class="bnav-item active" id="bnavDash"   onclick="showView('dash')">
+        <span class="bicon">📊</span><span>الرئيسية</span>
+      </button>
+      <button class="bnav-item" id="bnavStores" onclick="showView('stores')">
+        <span class="bicon">🏪</span><span>المتاجر</span>
+      </button>
+      <button class="bnav-item" id="bnavPlans"  onclick="showView('plans')">
+        <span class="bicon">📦</span><span>الباقات</span>
+      </button>
+      <button class="bnav-item" id="bnavBank"   onclick="showView('bank')">
+        <span class="bicon">💳</span><span>البنك</span>
+      </button>
+      <button class="bnav-item" id="bnavGuide"  onclick="showView('guide')">
+        <span class="bicon">📖</span><span>الدليل</span>
+      </button>
+      <button class="bnav-item" id="bnavLeads" onclick="showView('leads')">
+        <span class="bicon">🙋</span><span>العملاء</span>
+      </button>
+      <button class="bnav-item" onclick="doLogout()">
+        <span class="bicon">🚪</span><span>خروج</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-wrap">
+
+    <!-- ── Dashboard View ── -->
+    <section id="dashView">
+      <div class="page-header">
+        <div>
+          <h1>لوحة التحكم</h1>
+          <div class="sub" id="dashDate"></div>
+        </div>
+        <button class="btn btn-primary" onclick="refreshAll()">🔄 تحديث</button>
+      </div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-label">إجمالي المتاجر</div><div class="stat-value">—</div></div>
+        <div class="stat-card green"><div class="stat-label">المتاجر النشطة</div><div class="stat-value">—</div></div>
+        <div class="stat-card"><div class="stat-label">طلبات اليوم</div><div class="stat-value">—</div></div>
+        <div class="stat-card"><div class="stat-label">الاشتراكات / شهر</div><div class="stat-value">—</div></div>
+      </div>
+
+      <div id="dashAlert" style="display:none"></div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 المتاجر</div>
+          <button class="btn btn-primary btn-sm" onclick="showView('stores')">عرض الكل ←</button>
+        </div>
+        <div class="table-wrap" id="dashStoresTable">
+          <div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Stores View ── -->
+    <section id="storesView" style="display:none">
+      <div class="page-header">
+        <div>
+          <h1>إدارة المتاجر</h1>
+          <div class="sub" id="storesCount"></div>
+        </div>
+        <button class="btn btn-primary" onclick="openStoreModal()">➕ إضافة متجر</button>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div id="storesTable">
+          <div class="empty-state" style="padding:40px"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Plans View ── -->
+    <section id="plansView" style="display:none">
+      <div class="page-header">
+        <div><h1>📦 إدارة الباقات</h1><div class="sub">اضبط الأسعار والمميزات وما يراه العميل</div></div>
+        <button class="btn btn-primary" onclick="savePlans()">💾 حفظ التغييرات</button>
+      </div>
+      <div class="plans-editor" id="plansEditor">
+        <div class="empty-state" style="padding:40px"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+      </div>
+    </section>
+
+    <!-- ── Bank View ── -->
+    <section id="bankView" style="display:none">
+      <div class="page-header">
+        <div><h1>💳 حسابي البنكي</h1><div class="sub">بيانات التحويل التي تُرسل للعملاء</div></div>
+        <button class="btn btn-primary" onclick="saveBankSettings()">💾 حفظ البيانات</button>
+      </div>
+
+      <!-- Preview card -->
+      <div class="bank-card" id="bankPreviewCard">
+        <div class="bank-card-label">💳 بيانات التحويل البنكي</div>
+        <div class="bank-card-row">
+          <div class="bank-card-field"><div class="lbl">اسم البنك</div><div class="val" id="prev_bankName">—</div></div>
+          <div class="bank-card-field"><div class="lbl">اسم صاحب الحساب</div><div class="val" id="prev_holder">—</div></div>
+        </div>
+        <div class="bank-card-iban" id="prev_iban">IBAN: —</div>
+        <div style="margin-top:10px" id="prev_swift_wrap"><span style="font-size:12px;opacity:0.7">Swift: </span><span id="prev_swift" style="font-weight:700">—</span></div>
+        <div id="prev_links"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">بيانات الحساب البنكي</div></div>
+        <div class="form-grid">
+          <div class="field">
+            <label>اسم البنك</label>
+            <input id="b_bankName" placeholder="مثال: بنك الراجحي" oninput="updateBankPreview()">
+          </div>
+          <div class="field">
+            <label>اسم صاحب الحساب (كما في البنك)</label>
+            <input id="b_holder" placeholder="الاسم الكامل" oninput="updateBankPreview()">
+          </div>
+          <div class="field full">
+            <label>رقم IBAN</label>
+            <input id="b_iban" placeholder="SA00 0000 0000 0000 0000 0000" oninput="updateBankPreview()">
+            <span class="hint">يبدأ برمز البلد مثل SA أو EG أو AE</span>
+          </div>
+          <div class="field">
+            <label>Swift Code <span style="color:var(--gray);font-weight:400">(اختياري)</span></label>
+            <input id="b_swift" placeholder="مثال: RJHISARI" oninput="updateBankPreview()">
+          </div>
+          <div class="field">
+            <label>رقم الدعم الفني (واتساب)</label>
+            <input id="b_supportPhone" placeholder="201278632120" oninput="updateBankPreview()">
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:8px">روابط دفع إضافية (اختياري)</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>رابط PayPal</label>
+            <input id="b_paypal" placeholder="paypal.me/yourusername" oninput="updateBankPreview()">
+          </div>
+          <div class="field">
+            <label>رابط دفع آخر (Instapay / STC Pay ...)</label>
+            <input id="b_other" placeholder="الرابط أو رقم المحفظة" oninput="updateBankPreview()">
+          </div>
+        </div>
+
+        <div class="payment-settings-section">
+          <div class="section-label">إعدادات رسالة الدفع التلقائية</div>
+          <div class="form-grid">
+            <div class="field full">
+              <label>رقم البطاقة / الحساب البنكي</label>
+              <textarea id="b_accountNumber" rows="2" placeholder="SA00 0000 0000 0000 0000 0000&#10;أو رقم الحساب أو IBAN" oninput="updateBankPreview()"></textarea>
+              <span class="hint">يُستخدم في رسالة طلب الدفع المُرسلة لأصحاب المتاجر (إن فُرّغ يُستخدم رقم IBAN أعلاه)</span>
+            </div>
+            <div class="field full">
+              <label>رسالة مخصصة إضافية <span style="color:var(--gray);font-weight:400">(اختيارية)</span></label>
+              <textarea id="b_paymentExtraNote" rows="2" placeholder="مثال: يُرجى ذكر اسم المتجر في تفاصيل التحويل"></textarea>
+              <span class="hint">تُضاف أسفل رسالة طلب الدفع</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Guide View ── -->
+    <section id="guideView" style="display:none">
+      <div class="page-header">
+        <div><h1>📖 دليل الإعداد</h1><div class="sub">الرسالة الكاملة التي تُرسل للعميل بعد الاتفاق</div></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-outline" onclick="copyGuide()">📋 نسخ</button>
+          <button class="btn btn-primary" onclick="sendGuideWhatsApp()">📲 إرسال واتساب</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><div class="card-title">إعدادات الرسالة</div></div>
+        <div class="form-grid">
+          <div class="field">
+            <label>اسم العميل</label>
+            <input id="g_clientName" placeholder="اسم صاحب المتجر" oninput="buildGuideMsg()">
+          </div>
+          <div class="field">
+            <label>اسم المتجر</label>
+            <input id="g_storeName" placeholder="مثال: مطعم الأصالة" oninput="buildGuideMsg()">
+          </div>
+          <div class="field">
+            <label>الباقة المختارة</label>
+            <select id="g_plan" onchange="buildGuideMsg()">
+              <option value="starter">🌱 الأساسية</option>
+              <option value="pro" selected>⭐ الاحترافية</option>
+              <option value="premium">👑 المتقدمة</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>رقم جوال العميل (للإرسال عبر واتساب)</label>
+            <input id="g_clientPhone" placeholder="966512345678" type="tel">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">الرسالة الجاهزة للإرسال</div>
+          <button class="btn btn-sm btn-outline" onclick="buildGuideMsg()">🔄 تحديث</button>
+        </div>
+        <div class="guide-msg-box" id="guideMsgBox">جاري التحضير...</div>
+      </div>
+    </section>
+
+    <!-- ── Platform Leads View ── -->
+    <section id="leadsView" style="display:none">
+      <div class="page-header">
+        <div><h1>🙋 عملاء المنصة</h1><div class="sub">العملاء الذين تواصلوا عبر بوت المنصة</div></div>
+        <button class="btn btn-sm btn-outline" onclick="loadPlatformLeads()">🔄 تحديث</button>
+      </div>
+
+      <div class="card">
+        <div id="leadsContainer">
+          <div style="text-align:center;padding:40px;color:#6b7280">جاري التحميل...</div>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- /main-wrap -->
+</div><!-- /appScreen -->
+
+<!-- ═══════════════════════════ STORE FORM MODAL ═══════════════════════════════ -->
+<div id="storeModal" class="overlay" style="display:none" onclick="if(event.target===this)closeModal('storeModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">إضافة متجر جديد</h2>
+      <button class="modal-close" onclick="closeModal('storeModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+
+      <div class="section-label">معلومات المتجر</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>اسم المتجر *</label>
+          <input id="f_storeName" placeholder="مثال: مطعم الأصالة">
+        </div>
+        <div class="field">
+          <label>العملة</label>
+          <select id="f_currency">
+            <option value="ر.س">🇸🇦 ريال سعودي (ر.س)</option>
+            <option value="ج.م">🇪🇬 جنيه مصري (ج.م)</option>
+            <option value="د.إ">🇦🇪 درهم إماراتي (د.إ)</option>
+            <option value="د.ك">🇰🇼 دينار كويتي (د.ك)</option>
+            <option value="ر.ع">🇴🇲 ريال عُماني (ر.ع)</option>
+            <option value="د.ب">🇧🇭 دينار بحريني (د.ب)</option>
+            <option value="ر.ق">🇶🇦 ريال قطري (ر.ق)</option>
+            <option value="د.أ">🇯🇴 دينار أردني (د.أ)</option>
+            <option value="$">🇺🇸 دولار أمريكي ($)</option>
+            <option value="€">🇪🇺 يورو (€)</option>
+            <option value="£">🇬🇧 جنيه إسترليني (£)</option>
+            <option value="ل.ل">🇱🇧 ليرة لبنانية (ل.ل)</option>
+            <option value="د.ع">🇮🇶 دينار عراقي (د.ع)</option>
+            <option value="﷼">🇾🇪 ريال يمني (﷼)</option>
+            <option value="ل.س">🇸🇾 ليرة سورية (ل.س)</option>
+            <option value="د.م">🇲🇦 درهم مغربي (د.م)</option>
+            <option value="د.ت">🇹🇳 دينار تونسي (د.ت)</option>
+            <option value="د.ج">🇩🇿 دينار جزائري (د.ج)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>اسم المالك *</label>
+          <input id="f_ownerName" placeholder="اسم صاحب المتجر">
+        </div>
+        <div class="field">
+          <label>رقم جوال المالك *</label>
+          <input id="f_ownerPhone" placeholder="966512345678">
+        </div>
+        <div class="field full">
+          <label>كلمة مرور لوحة تحكم العميل</label>
+          <input id="f_storePassword" placeholder="مثال: nakheel2026">
+          <span class="hint">هذه الكلمة يستخدمها العميل للدخول على store-admin.html برقم جواله</span>
+        </div>
+        <div class="field">
+          <label>رسوم التوصيل (ر.س)</label>
+          <input id="f_deliveryFee" type="number" placeholder="10">
+        </div>
+        <div class="field">
+          <label>ساعات العمل</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="f_start" type="number" min="0" max="23" placeholder="0" style="width:80px">
+            <span style="color:var(--gray)">←</span>
+            <input id="f_end" type="number" min="1" max="24" placeholder="24" style="width:80px">
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">بيانات Meta / واتساب</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Phone Number ID</label>
+          <input id="f_phoneNumberId" placeholder="10521903...">
+        </div>
+        <div class="field">
+          <label>WABA ID</label>
+          <input id="f_wabaId" placeholder="15278634...">
+        </div>
+        <div class="field full">
+          <label>Token واتساب</label>
+          <input id="f_token" type="password" placeholder="EAAYB0...">
+          <span class="hint">محفوظ بشكل آمن</span>
+        </div>
+        <div class="field full">
+          <label>Verify Token (لـ Webhook)</label>
+          <input id="f_verifyToken" placeholder="my_store_secret_2026">
+        </div>
+      </div>
+
+      <div class="section-label">تخصيص المتجر (بوت + فاتورة)</div>
+      <div class="form-grid">
+        <div class="field full">
+          <label>رسالة الترحيب الخاصة بالمتجر</label>
+          <textarea id="f_welcomeMessage" rows="3" placeholder="أهلاً وسهلاً في *اسم المتجر* 🌴&#10;كيف يمكنني مساعدتك اليوم؟"></textarea>
+          <span class="hint">تظهر هذه الرسالة عند بدء المحادثة. يمكن استخدام *نص* للخط العريض.</span>
+        </div>
+        <div class="field">
+          <label>لون الفاتورة الرئيسي</label>
+          <input id="f_invoiceColor" type="color" value="#1b5e20" style="height:42px;padding:4px 8px">
+        </div>
+        <div class="field">
+          <label>شعار المتجر (اختياري)</label>
+          <div class="img-upload-area" onclick="document.getElementById('f_logoFile').click()">
+            <img id="f_logoPreview" alt="الشعار" style="display:none;max-height:100px;object-fit:contain">
+            <div id="f_logoPlaceholder" class="img-placeholder">
+              <span class="ph-icon">🖼️</span>
+              <span class="ph-text">اختر الشعار</span>
+            </div>
+          </div>
+          <input type="file" id="f_logoFile" accept="image/*" style="display:none" onchange="handleMasterLogo(this)">
+          <input type="hidden" id="f_invoiceLogoUrl">
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('f_logoFile').click()">📁 اختر</button>
+            <button type="button" class="btn btn-sm" style="background:#f3f4f6;color:var(--gray)" onclick="clearMasterLogo()">🗑️ إزالة</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">الاشتراك والباقة</div>
+      <div class="form-grid">
+        <div class="field">
+          <label>الباقة</label>
+          <select id="f_plan" style="font-size:15px">
+            <option value="starter">🌱 الأساسية — بوت + لوحة إدمن</option>
+            <option value="pro">⭐ الاحترافية — + فواتير + عملاء VIP</option>
+            <option value="premium">👑 المتقدمة — + دفع Stripe بالفيزا</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>رسوم الاشتراك الشهري ($)</label>
+          <input id="f_subscriptionFee" type="number" placeholder="80">
+        </div>
+        <div class="field">
+          <label>حالة الاشتراك</label>
+          <select id="f_subscriptionStatus">
+            <option value="active">✅ نشط</option>
+            <option value="expiring">⚠️ ينتهي قريباً</option>
+            <option value="expired">❌ منتهي</option>
+            <option value="suspended">🚫 موقوف</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>تاريخ بداية الاشتراك</label>
+          <input id="f_subscriptionStartDate" type="date">
+        </div>
+        <div class="field">
+          <label>تاريخ التجديد القادم</label>
+          <input id="f_subscriptionNextPayment" type="date">
+        </div>
+        <div class="field full">
+          <label>ملاحظات</label>
+          <textarea id="f_notes" rows="2" placeholder="ملاحظات إضافية..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('storeModal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveStore()">💾 حفظ المتجر</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════ ORDERS SLIDE-OVER ══════════════════════════════ -->
+<div id="ordersSlide" class="slide-over" style="display:none">
+  <div class="slide-overlay" onclick="closeOrders()"></div>
+  <div class="slide-panel">
+    <div class="slide-header">
+      <h2 id="ordersTitle">طلبات المتجر</h2>
+      <button class="slide-close" onclick="closeOrders()">✕</button>
+    </div>
+    <div class="slide-stats" id="ordersStats"></div>
+    <div class="slide-body" id="ordersBody">
+      <div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ ONBOARDING MODAL ═════════════════════════════════ -->
+<div id="onboardingModal" class="overlay" style="display:none" onclick="if(event.target===this)closeModal('onboardingModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📋 رسالة الانضمام</h2>
+      <button class="modal-close" onclick="closeModal('onboardingModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--gray);margin-bottom:12px">أرسل هذه الرسالة للعميل على واتساب ليربط البوت بحسابه:</p>
+      <div class="msg-box" id="onboardingText"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('onboardingModal')">إغلاق</button>
+      <button class="btn btn-gold" onclick="copyOnboarding()">📋 نسخ الرسالة</button>
+      <button class="btn btn-primary" id="whatsappBtn" onclick="openWhatsApp()">📲 إرسال واتساب</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ DELETE CONFIRM ════════════════════════════════════ -->
+<div id="deleteModal" class="overlay" style="display:none" onclick="if(event.target===this)closeModal('deleteModal')">
+  <div class="modal">
+    <div class="del-modal">
+      <div class="icon">🗑️</div>
+      <h3>حذف المتجر</h3>
+      <p id="deleteMsg">هل أنت متأكد من حذف هذا المتجر؟ لا يمكن التراجع.</p>
+      <div class="del-btns">
+        <button class="btn btn-outline" onclick="closeModal('deleteModal')">إلغاء</button>
+        <button class="btn btn-danger" id="confirmDeleteBtn">🗑️ حذف نهائي</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ PAYMENT REQUEST POPUP ═════════════════════════════ -->
+<div id="paymentPopup" class="overlay" style="display:none" onclick="if(event.target===this)closeModal('paymentPopup')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>💳 إرسال طلب الدفع</h2>
+      <button class="modal-close" onclick="closeModal('paymentPopup')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="store-pay-info" id="payPopupInfo">جاري التحضير...</div>
+      <div class="warn-note">⚠️ سيتم إرسال رسالة واتساب لمالك المتجر تحتوي على تفاصيل الدفع وبيانات حسابك البنكي.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('paymentPopup')">إلغاء</button>
+      <button class="btn btn-payment" id="payPopupSendBtn" onclick="doSendPaymentRequest()">📲 إرسال الآن</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ SUBSCRIPTION MINI-PANEL ════════════════════════════ -->
+<div id="subPanel" class="overlay" style="display:none" onclick="if(event.target===this)closeModal('subPanel')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>📋 إدارة الاشتراك</h2>
+      <button class="modal-close" onclick="closeModal('subPanel')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="sub-panel-store" id="sp_storeName">—</div>
+      <div class="sub-panel-grid">
+
+        <!-- Toggle تفعيل / إيقاف -->
+        <div class="sub-toggle-row">
+          <div>
+            <div class="stl" id="sp_activeLabel">الاشتراك نشط</div>
+            <div class="sts" id="sp_activeDesc">انقر لإيقاف الاشتراك مؤقتاً</div>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" id="sp_activeToggle" onchange="sp_toggleLabel()">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <!-- الباقة -->
+        <div class="field full">
+          <label>الباقة</label>
+          <select id="sp_plan" style="font-size:15px">
+            <option value="starter">🌱 الأساسية</option>
+            <option value="pro">⭐ الاحترافية</option>
+            <option value="premium">👑 المتقدمة</option>
+          </select>
+        </div>
+
+        <!-- رسوم الاشتراك -->
+        <div class="field">
+          <label>رسوم الاشتراك ($)</label>
+          <input id="sp_subFee" type="number" min="0" placeholder="80">
+        </div>
+
+        <!-- تاريخ الانتهاء -->
+        <div class="field">
+          <label>تاريخ التجديد القادم</label>
+          <input id="sp_nextPayment" type="date">
+        </div>
+
+        <!-- زر إرسال طلب الدفع -->
+        <div class="full" style="margin-top:4px">
+          <button id="sp_payBtn" class="btn btn-gold" style="width:100%;justify-content:center" onclick="sp_sendPayment()">📲 إرسال طلب الدفع</button>
+          <p style="font-size:12px;color:var(--gray);margin-top:6px;text-align:center">سيتم إرسال رسالة واتساب لمالك المتجر تحتوي على تفاصيل التحويل</p>
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('subPanel')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveSubPanel()">💾 حفظ التغييرات</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- ════════════════════════════════ SCRIPT ══════════════════════════════════════ -->
+<script>
+const BASE = window.location.origin;
+let TOKEN = localStorage.getItem("master_token") || "";
+let allStores = [];
+let currentOnboardingStore = null;
+let pendingMasterLogo = null;
+
+// ─── Logo upload helpers ───────────────────────────────────────────────────────
+function handleMasterLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast("الشعار أكبر من 3MB", "error"); return; }
+  const ext = file.name.split(".").pop().toLowerCase();
+  const reader = new FileReader();
+  reader.onload = e => {
+    pendingMasterLogo = { base64: e.target.result, ext };
+    const prev = document.getElementById("f_logoPreview");
+    const ph   = document.getElementById("f_logoPlaceholder");
+    prev.src = e.target.result; prev.style.display = "block";
+    ph.style.display = "none";
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearMasterLogo() {
+  pendingMasterLogo = null;
+  document.getElementById("f_logoFile").value = "";
+  document.getElementById("f_invoiceLogoUrl").value = "";
+  const prev = document.getElementById("f_logoPreview");
+  const ph   = document.getElementById("f_logoPlaceholder");
+  prev.src = ""; prev.style.display = "none";
+  ph.style.display = "flex";
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+window.addEventListener("load", () => {
+  document.getElementById("dashDate").textContent =
+    new Date().toLocaleDateString("ar-EG", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  if (TOKEN) {
+    showApp();
+    refreshAll();
+  } else {
+    showLogin();
+  }
+});
+
+function showLogin() {
+  document.getElementById("loginScreen").style.display = "";
+  document.getElementById("appScreen").style.display = "none";
+}
+
+function showApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appScreen").style.display = "";
+}
+
+// ─── Auth ──────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const pass = document.getElementById("loginPass").value.trim();
+  if (!pass) return;
+
+  try {
+    const r = await api("POST", "/master/login", { password: pass }, false);
+    TOKEN = r.token;
+    localStorage.setItem("master_token", TOKEN);
+    document.getElementById("loginError").style.display = "none";
+    document.getElementById("loginPass").value = "";
+    showApp();
+    refreshAll();
+  } catch {
+    document.getElementById("loginError").style.display = "";
+  }
+}
+
+async function doLogout() {
+  try { await api("POST", "/master/logout"); } catch {}
+  TOKEN = "";
+  localStorage.removeItem("master_token");
+  showLogin();
+}
+
+// ─── Owner Settings (shared state) ────────────────────────────────────────────
+let ownerSettings = {};
+
+async function loadOwnerSettings() {
+  try { ownerSettings = await api("GET", "/master/owner-settings"); } catch {}
+}
+
+// ─── Navigation ────────────────────────────────────────────────────────────────
+function showView(view) {
+  const views = ["dash","stores","plans","bank","guide","leads"];
+  views.forEach(v => {
+    const el = document.getElementById(v + "View");
+    if (el) el.style.display = v === view ? "" : "none";
+  });
+  // sidebar nav
+  ["navDash","navStores","navPlans","navBank","navGuide","navLeads"].forEach(id => {
+    document.getElementById(id)?.classList.remove("active");
+  });
+  const sideMap = { dash:"navDash", stores:"navStores", plans:"navPlans", bank:"navBank", guide:"navGuide", leads:"navLeads" };
+  if (sideMap[view]) document.getElementById(sideMap[view])?.classList.add("active");
+  // bottom nav
+  ["bnavDash","bnavStores","bnavPlans","bnavBank","bnavGuide","bnavLeads"].forEach(id => {
+    document.getElementById(id)?.classList.remove("active");
+  });
+  const botMap = { dash:"bnavDash", stores:"bnavStores", plans:"bnavPlans", bank:"bnavBank", guide:"bnavGuide", leads:"bnavLeads" };
+  if (botMap[view]) document.getElementById(botMap[view])?.classList.add("active");
+
+  if (view === "stores") { loadStores(); loadWaStatuses(); }
+  if (view === "plans")  loadPlanPrices();
+  if (view === "bank")   loadBankSettings();
+  if (view === "guide")  { loadBankSettings().then(buildGuideMsg); }
+  if (view === "leads")  loadPlatformLeads();
+}
+
+// ─── Refresh All ───────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.all([loadStats(), loadDashStores(), loadOwnerSettings()]);
+  loadWaStatuses();
+}
+
+// ─── Stats ─────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const d = await api("GET", "/master/stats");
+    document.getElementById("statsGrid").innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">🏪 إجمالي المتاجر</div>
+        <div class="stat-value">${d.totalStores}</div>
+        <div class="stat-sub">كل المتاجر المسجلة</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">✅ المتاجر النشطة</div>
+        <div class="stat-value">${d.activeStores}</div>
+        <div class="stat-sub">اشتراك ساري</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📦 طلبات اليوم</div>
+        <div class="stat-value">${d.totalOrdersToday}</div>
+        <div class="stat-sub">من جميع المتاجر</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">💰 الاشتراكات / شهر</div>
+        <div class="stat-value">$${d.monthlyRevenue}</div>
+        <div class="stat-sub">دخل شهري ثابت</div>
+      </div>
+    `;
+
+    const alert = document.getElementById("dashAlert");
+    if (d.expiringCount > 0) {
+      alert.style.display = "";
+      alert.innerHTML = `<div class="alert-banner">⚠️ ${d.expiringCount} متجر اشتراكه ينتهي خلال 7 أيام — تواصل مع أصحابها للتجديد</div>`;
+    } else {
+      alert.style.display = "none";
+    }
+  } catch (e) {
+    if (e.status === 401) { doLogout(); }
+  }
+}
+
+// ─── Dashboard stores table ────────────────────────────────────────────────────
+async function loadDashStores() {
+  try {
+    const { stores } = await api("GET", "/master/stores");
+    allStores = stores;
+    const recent = [...stores].sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")).slice(0, 5);
+    document.getElementById("dashStoresTable").innerHTML = storesTableHTML(recent);
+  } catch {}
+}
+
+// ─── Stores View ───────────────────────────────────────────────────────────────
+async function loadStores() {
+  document.getElementById("storesTable").innerHTML = `<div class="empty-state" style="padding:40px"><div class="icon">⏳</div><p>جاري التحميل...</p></div>`;
+  try {
+    const { stores } = await api("GET", "/master/stores");
+    allStores = stores;
+    document.getElementById("storesCount").textContent = `${stores.length} متجر مسجّل`;
+    document.getElementById("storesTable").innerHTML = storesTableHTML(stores);
+  } catch {}
+}
+
+// ─── Table HTML ────────────────────────────────────────────────────────────────
+function storesTableHTML(stores) {
+  if (!stores.length) return `
+    <div class="empty-state" style="padding:48px">
+      <div class="icon">🏪</div>
+      <h3>لا توجد متاجر بعد</h3>
+      <p>اضغط "إضافة متجر" لإضافة أول عميل</p>
+    </div>`;
+
+  const PLAN_LABELS = { starter:"🌱 أساسية", pro:"⭐ احترافية", premium:"👑 متقدمة" };
+  const PLAN_COLORS = { starter:"#6b7280", pro:"#1b5e20", premium:"#C9A24B" };
+
+  // ── Desktop Table ──
+  const rows = stores.map(s => {
+    const badge    = subBadge(s.subscriptionStatus, s.subscriptionNextPayment);
+    const planId   = s.plan || "starter";
+    const daysLeft = daysUntil(s.subscriptionNextPayment);
+    const nextPay  = s.subscriptionNextPayment
+      ? `${formatDate(s.subscriptionNextPayment)}<br><small style="color:${daysLeft<=7?'var(--warn)':'var(--gray)'}">${daysLeft>=0?daysLeft+' يوم':'منتهي'}</small>`
+      : "—";
+    const isActive = s.subscriptionStatus === "active";
+    const toggleBtn = isActive
+      ? `<button class="btn-icon danger" title="إيقاف الاشتراك" onclick="toggleSubscription('${s.id}','suspended','${esc(s.storeName)}')">🚫</button>`
+      : `<button class="btn-icon" title="تفعيل الاشتراك" style="background:var(--green-lt);color:var(--green)" onclick="toggleSubscription('${s.id}','active','${esc(s.storeName)}')">✅</button>`;
+
+    return `<tr>
+      <td>
+        <div class="store-name">${esc(s.storeName||"—")}</div>
+        <div class="store-owner">👤 ${esc(s.ownerName||"")} | <a href="tel:${esc(s.ownerPhone)}" style="color:var(--green)">${esc(s.ownerPhone||"—")}</a></div>
+      </td>
+      <td>${badge}</td>
+      <td style="font-size:13px">${nextPay}</td>
+      <td>
+        <select class="plan-select-inline" onchange="upgradePlan('${s.id}', this.value, '${esc(s.storeName)}')">
+          <option value="starter" ${planId==='starter'?'selected':''}>🌱 أساسية</option>
+          <option value="pro"     ${planId==='pro'    ?'selected':''}>⭐ احترافية</option>
+          <option value="premium" ${planId==='premium'?'selected':''}>👑 متقدمة</option>
+        </select>
+      </td>
+      <td><div class="actions-cell">
+        ${toggleBtn}
+        <button class="btn-icon" title="تقرير المتجر الكامل" style="background:#f0f9ff;color:#0369a1" onclick="openStoreReport('${s.id}')">📊</button>
+        <button class="btn-icon" title="إدارة الاشتراك" style="background:#f0fdf4;color:#16a34a" onclick="openSubPanel('${s.id}')">📋</button>
+        <button class="btn-icon" title="إرسال طلب الدفع" style="background:var(--gold-lt);color:var(--gold)" onclick="openPaymentPopup('${s.id}')">💳</button>
+        <button class="btn-icon" title="ربط واتساب" onclick="openPairModal('${s.id}')">🔗</button>
+        <button class="btn-icon" title="الطلبات" onclick="openOrders('${s.id}','${esc(s.storeName)}')">📦</button>
+        <button class="btn-icon" title="رسالة الإعداد" onclick="openOnboarding('${s.id}')">📋</button>
+        <button class="btn-icon" title="تعديل بيانات المتجر" onclick="openStoreModal('${s.id}')">✏️</button>
+        <button class="btn-icon" title="فتح لوحة تحكم المتجر كاملة" style="background:#eff6ff;color:#2563eb" onclick="openStorePanel('${s.id}')">🎛️</button>
+        <button class="btn-icon danger" title="حذف" onclick="confirmDelete('${s.id}','${esc(s.storeName)}')">🗑️</button>
+      </div></td>
+    </tr>`;
+  }).join("");
+
+  const tableHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th>المتجر / المالك</th><th>حالة الاشتراك</th>
+      <th>تاريخ الانتهاء</th><th>ترقية الباقة</th><th>إجراءات</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+
+  // ── Mobile Cards ──
+  const cards = stores.map(s => {
+    const planId   = s.plan || "starter";
+    const daysLeft = daysUntil(s.subscriptionNextPayment);
+    const daysColor = daysLeft <= 7 ? "var(--warn)" : "var(--green)";
+    const isActive = s.subscriptionStatus === "active";
+    const statusIcon = {active:"✅",expiring:"⚠️",expired:"❌",suspended:"🚫"}[s.subscriptionStatus]||"—";
+    return `<div class="store-card">
+      <div class="store-card-top">
+        <div class="store-card-info">
+          <div class="sn">${esc(s.storeName||"—")}</div>
+          <div class="so">👤 ${esc(s.ownerName||"")} &nbsp;|&nbsp; <a href="tel:${esc(s.ownerPhone)}" style="color:var(--green)">${esc(s.ownerPhone||"")}</a></div>
+        </div>
+        <div class="store-card-badges">
+          <span style="background:${PLAN_COLORS[planId]||'#6b7280'};color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${PLAN_LABELS[planId]||planId}</span>
+          <span style="font-size:12px;font-weight:600;color:${isActive?'var(--green)':'var(--danger)'}">${statusIcon} ${isActive?'نشط':'غير نشط'}</span>
+        </div>
+      </div>
+      <div class="store-card-meta">
+        <div class="sc-meta-item" style="grid-column:1/-1">
+          <div class="scm-lbl">📅 تاريخ الانتهاء</div>
+          <div class="scm-val">${formatDate(s.subscriptionNextPayment)} <small style="color:${daysColor};font-weight:600">${daysLeft>=0?'('+daysLeft+' يوم)':'(منتهي)'}</small></div>
+        </div>
+      </div>
+      <div style="margin:8px 0 10px">
+        <label style="font-size:12px;color:var(--gray);font-weight:600;display:block;margin-bottom:5px">ترقية الباقة:</label>
+        <select class="plan-select-inline" style="width:100%" onchange="upgradePlan('${s.id}', this.value, '${esc(s.storeName)}')">
+          <option value="starter" ${planId==='starter'?'selected':''}>🌱 أساسية</option>
+          <option value="pro"     ${planId==='pro'    ?'selected':''}>⭐ احترافية</option>
+          <option value="premium" ${planId==='premium'?'selected':''}>👑 متقدمة</option>
+        </select>
+      </div>
+      <div class="store-card-actions">
+        ${isActive
+          ? `<button class="sc-btn danger" onclick="toggleSubscription('${s.id}','suspended','${esc(s.storeName)}')">🚫 إيقاف</button>`
+          : `<button class="sc-btn primary" onclick="toggleSubscription('${s.id}','active','${esc(s.storeName)}')">✅ تفعيل</button>`
+        }
+        <button class="sc-btn" style="background:#f0f9ff;color:#0369a1;font-weight:700" onclick="openStoreReport('${s.id}')">📊 تقرير</button>
+        <button class="sc-btn" style="background:#f0fdf4;color:#16a34a;font-weight:700" onclick="openSubPanel('${s.id}')">📋 الاشتراك</button>
+        <button class="sc-btn" style="background:var(--gold-lt);color:var(--gold);font-weight:700" onclick="openPaymentPopup('${s.id}')">💳 طلب دفع</button>
+        <button class="sc-btn" onclick="openOrders('${s.id}','${esc(s.storeName)}')">📦 طلبات</button>
+        <button class="sc-btn" style="background:#eff6ff;color:#2563eb;font-weight:700" onclick="openStorePanel('${s.id}')">🎛️ إدارة</button>
+        <button class="sc-btn" onclick="openStoreModal('${s.id}')">✏️ تعديل</button>
+        <button class="sc-btn danger" onclick="confirmDelete('${s.id}','${esc(s.storeName)}')">🗑️</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<div class="desktop-table">${tableHTML}</div>
+          <div class="mobile-cards" style="padding:12px">${cards}</div>`;
+}
+
+// ─── Store Modal ───────────────────────────────────────────────────────────────
+// فتح لوحة تحكم أي متجر مباشرة من الماستر (بدون كلمة مرور)
+async function openStorePanel(storeId) {
+  try {
+    const r = await fetch(`${BASE}/master/impersonate/${storeId}`, {
+      method:"POST",
+      headers:{ "x-master-token": TOKEN, "Content-Type":"application/json" }
+    });
+    const d = await r.json();
+    if (!d.token) { showToast(d.error || "فشل فتح اللوحة", "error"); return; }
+    const key = `store_token_${d.storeId}`;
+    localStorage.setItem(key, d.token);
+    const url = `/store-admin.html?storeId=${d.storeId}&masterToken=${encodeURIComponent(d.token)}`;
+    window.open(url, "_blank");
+  } catch(e) {
+    showToast("تعذّر فتح لوحة المتجر", "error");
+  }
+}
+
+function openStoreReport(storeId) {
+  window.open(`/store-report.html?storeId=${storeId}&token=${encodeURIComponent(TOKEN)}`, "_blank");
+}
+
+function openStoreModal(id = null) {
+  const store = id ? allStores.find(s => s.id === id) : null;
+  document.getElementById("modalTitle").textContent = store ? "🛠️ دعم المتجر — تعديل البيانات" : "➕ إضافة متجر جديد";
+  document.getElementById("editId").value = id || "";
+
+  const today = new Date().toISOString().slice(0,10);
+  const nextMonth = new Date(Date.now() + 30*86400000).toISOString().slice(0,10);
+
+  document.getElementById("f_storeName").value        = store?.storeName || "";
+  document.getElementById("f_currency").value         = store?.currency || "ر.س";
+  document.getElementById("f_ownerName").value        = store?.ownerName || "";
+  document.getElementById("f_ownerPhone").value       = store?.ownerPhone || "";
+  document.getElementById("f_deliveryFee").value      = store?.deliveryFee ?? 10;
+  document.getElementById("f_start").value            = store?.workingHoursStart ?? 0;
+  document.getElementById("f_end").value              = store?.workingHoursEnd ?? 24;
+  document.getElementById("f_phoneNumberId").value    = store?.phoneNumberId || "";
+  document.getElementById("f_wabaId").value           = store?.wabaId || "";
+  document.getElementById("f_token").value            = store?.token || "";
+  document.getElementById("f_verifyToken").value      = store?.verifyToken || "";
+  document.getElementById("f_plan").value             = store?.plan || "starter";
+  document.getElementById("f_subscriptionFee").value  = store?.subscriptionFee || 80;
+  document.getElementById("f_subscriptionStatus").value = store?.subscriptionStatus || "active";
+  document.getElementById("f_subscriptionStartDate").value = store?.subscriptionStartDate || today;
+  document.getElementById("f_subscriptionNextPayment").value = store?.subscriptionNextPayment || nextMonth;
+  document.getElementById("f_notes").value            = store?.notes || "";
+  document.getElementById("f_storePassword").value    = store?.storePassword || "";
+  document.getElementById("f_welcomeMessage").value   = store?.welcomeMessage || "";
+  document.getElementById("f_invoiceColor").value     = store?.invoiceColor || "#1b5e20";
+  const logoUrl = store?.invoiceLogoUrl || "";
+  document.getElementById("f_invoiceLogoUrl").value = logoUrl;
+  pendingMasterLogo = null;
+  document.getElementById("f_logoFile").value = "";
+  const lPrev = document.getElementById("f_logoPreview");
+  const lPh   = document.getElementById("f_logoPlaceholder");
+  if (logoUrl) { lPrev.src = logoUrl; lPrev.style.display = "block"; lPh.style.display = "none"; }
+  else         { lPrev.style.display = "none"; lPh.style.display = "flex"; }
+
+  document.getElementById("storeModal").style.display = "";
+}
+
+async function saveStore() {
+  const id = document.getElementById("editId").value;
+  let logoUrl = document.getElementById("f_invoiceLogoUrl").value.trim();
+
+  if (pendingMasterLogo) {
+    try {
+      const storeId = id || ("new_" + Date.now());
+      const r = await api("POST", "/master/upload-logo", { ...pendingMasterLogo, storeId });
+      logoUrl = r.url;
+      document.getElementById("f_invoiceLogoUrl").value = logoUrl;
+      pendingMasterLogo = null;
+    } catch { showToast("فشل رفع الشعار، حاول مرة أخرى", "error"); return; }
+  }
+
+  const payload = {
+    storeName:               document.getElementById("f_storeName").value.trim(),
+    currency:                document.getElementById("f_currency").value || "ر.س",
+    ownerName:               document.getElementById("f_ownerName").value.trim(),
+    ownerPhone:              document.getElementById("f_ownerPhone").value.trim(),
+    deliveryFee:             parseFloat(document.getElementById("f_deliveryFee").value) || 0,
+    workingHoursStart:       parseInt(document.getElementById("f_start").value) || 0,
+    workingHoursEnd:         parseInt(document.getElementById("f_end").value) || 24,
+    phoneNumberId:           document.getElementById("f_phoneNumberId").value.trim(),
+    wabaId:                  document.getElementById("f_wabaId").value.trim(),
+    token:                   document.getElementById("f_token").value.trim(),
+    verifyToken:             document.getElementById("f_verifyToken").value.trim(),
+    plan:                    document.getElementById("f_plan").value || "starter",
+    subscriptionFee:         parseFloat(document.getElementById("f_subscriptionFee").value) || 0,
+    subscriptionStatus:      document.getElementById("f_subscriptionStatus").value,
+    subscriptionStartDate:   document.getElementById("f_subscriptionStartDate").value,
+    subscriptionNextPayment: document.getElementById("f_subscriptionNextPayment").value,
+    notes:                   document.getElementById("f_notes").value.trim(),
+    storePassword:           document.getElementById("f_storePassword").value.trim(),
+    welcomeMessage:          document.getElementById("f_welcomeMessage").value.trim(),
+    invoiceColor:            document.getElementById("f_invoiceColor").value,
+    invoiceLogoUrl:          logoUrl,
+  };
+
+  if (!payload.storeName || !payload.ownerName) {
+    showToast("اسم المتجر واسم المالك مطلوبان", "error"); return;
+  }
+
+  try {
+    if (id) {
+      await api("PUT", `/master/stores/${id}`, payload);
+      showToast("تم تحديث المتجر ✅", "success");
+    } else {
+      await api("POST", "/master/stores", payload);
+      showToast("تم إضافة المتجر ✅", "success");
+    }
+    closeModal("storeModal");
+    refreshAll();
+    if (document.getElementById("storesView").style.display !== "none") loadStores();
+  } catch {
+    showToast("حدث خطأ، حاول مرة أخرى", "error");
+  }
+}
+
+// ─── Toggle Subscription (activate / suspend) ──────────────────────────────────
+async function toggleSubscription(storeId, newStatus, storeName) {
+  const label = newStatus === "active" ? "تفعيل" : "إيقاف";
+  if (!confirm(`هل تريد ${label} اشتراك متجر "${storeName}"؟`)) return;
+  try {
+    await api("PUT", `/master/stores/${storeId}`, { subscriptionStatus: newStatus });
+    const idx = allStores.findIndex(s => s.id === storeId);
+    if (idx !== -1) allStores[idx].subscriptionStatus = newStatus;
+    showToast(newStatus === "active" ? "✅ تم تفعيل الاشتراك وإرسال رسالة تأكيد" : "🚫 تم إيقاف الاشتراك", newStatus === "active" ? "success" : "warn");
+    loadStores();
+  } catch {
+    showToast("حدث خطأ أثناء التعديل", "error");
+  }
+}
+
+// ─── Upgrade Plan ──────────────────────────────────────────────────────────────
+async function upgradePlan(storeId, newPlan, storeName) {
+  const PLAN_LABELS = { starter:"🌱 الأساسية", pro:"⭐ الاحترافية", premium:"👑 المتقدمة" };
+  if (!confirm(`تغيير باقة "${storeName}" إلى ${PLAN_LABELS[newPlan]||newPlan}؟`)) {
+    // Reset the select visually
+    loadStores(); return;
+  }
+  try {
+    await api("PUT", `/master/stores/${storeId}`, { plan: newPlan });
+    const idx = allStores.findIndex(s => s.id === storeId);
+    if (idx !== -1) allStores[idx].plan = newPlan;
+    showToast(`تم تغيير الباقة إلى ${PLAN_LABELS[newPlan]||newPlan} ✅`, "success");
+    loadStores();
+  } catch {
+    showToast("فشل تغيير الباقة", "error");
+    loadStores();
+  }
+}
+
+// ─── Subscription Mini-Panel ──────────────────────────────────────────────────
+let _subPanelStoreId = null;
+
+function openSubPanel(storeId) {
+  const store = allStores.find(s => s.id === storeId);
+  if (!store) return;
+  _subPanelStoreId = storeId;
+
+  const PLAN_LABELS = { starter:"🌱 الأساسية", pro:"⭐ الاحترافية", premium:"👑 المتقدمة" };
+  const isActive = store.subscriptionStatus === "active";
+
+  document.getElementById("sp_storeName").textContent   = `🏪 ${store.storeName||"—"} — ${store.ownerName||""}`;
+  document.getElementById("sp_plan").value              = store.plan || "starter";
+  document.getElementById("sp_subFee").value            = store.subscriptionFee ?? 80;
+  document.getElementById("sp_nextPayment").value       = store.subscriptionNextPayment || "";
+  document.getElementById("sp_activeToggle").checked   = isActive;
+  document.getElementById("sp_activeLabel").textContent = isActive ? "الاشتراك نشط" : "الاشتراك متوقف";
+  document.getElementById("sp_activeDesc").textContent  = isActive ? "انقر لإيقاف الاشتراك مؤقتاً" : "انقر لتفعيل الاشتراك";
+
+  // Reset payment btn
+  const payBtn = document.getElementById("sp_payBtn");
+  payBtn.disabled = false;
+  payBtn.textContent = "📲 إرسال طلب الدفع";
+
+  document.getElementById("subPanel").style.display = "";
+}
+
+function sp_toggleLabel() {
+  const on  = document.getElementById("sp_activeToggle").checked;
+  document.getElementById("sp_activeLabel").textContent = on ? "الاشتراك نشط"    : "الاشتراك متوقف";
+  document.getElementById("sp_activeDesc").textContent  = on ? "انقر لإيقاف الاشتراك مؤقتاً" : "انقر لتفعيل الاشتراك";
+}
+
+async function saveSubPanel() {
+  if (!_subPanelStoreId) return;
+  const plan       = document.getElementById("sp_plan").value;
+  const fee        = parseFloat(document.getElementById("sp_subFee").value) || 0;
+  const nextPay    = document.getElementById("sp_nextPayment").value;
+  const isActive   = document.getElementById("sp_activeToggle").checked;
+  const status     = isActive ? "active" : "suspended";
+
+  try {
+    await api("PUT", `/master/stores/${_subPanelStoreId}`, {
+      plan,
+      subscriptionFee: fee,
+      subscriptionNextPayment: nextPay,
+      subscriptionStatus: status,
+    });
+    // Update local cache
+    const idx = allStores.findIndex(s => s.id === _subPanelStoreId);
+    if (idx !== -1) Object.assign(allStores[idx], { plan, subscriptionFee: fee, subscriptionNextPayment: nextPay, subscriptionStatus: status });
+    showToast("✅ تم حفظ بيانات الاشتراك", "success");
+    closeModal("subPanel");
+    loadStores();
+  } catch {
+    showToast("فشل الحفظ، حاول مرة أخرى", "error");
+  }
+}
+
+async function sp_sendPayment() {
+  if (!_subPanelStoreId) return;
+  const btn = document.getElementById("sp_payBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ جاري الإرسال...";
+  try {
+    await api("POST", `/master/stores/${_subPanelStoreId}/send-payment-request`);
+    showToast("✅ تم إرسال طلب الدفع بنجاح", "success");
+    btn.textContent = "✅ تم الإرسال";
+  } catch(e) {
+    showToast("فشل الإرسال: " + (e.error || "خطأ"), "error");
+    btn.disabled = false;
+    btn.textContent = "📲 إرسال طلب الدفع";
+  }
+}
+
+// ─── Payment Request Popup ─────────────────────────────────────────────────────
+let _paymentStoreId = null;
+
+function openPaymentPopup(storeId) {
+  const store = allStores.find(s => s.id === storeId);
+  if (!store) return;
+  _paymentStoreId = storeId;
+
+  const PLAN_LABELS = { starter:"🌱 الأساسية", pro:"⭐ الاحترافية", premium:"👑 المتقدمة" };
+  const planName = PLAN_LABELS[store.plan||"starter"] || (store.plan||"أساسية");
+  const phone    = store.ownerPhone || "—";
+  const expiry   = formatDate(store.subscriptionNextPayment);
+
+  document.getElementById("payPopupInfo").innerHTML =
+    `سيتم إرسال رسالة دفع إلى:<br>
+     <strong>${esc(store.storeName||"—")}</strong><br>
+     📱 ${esc(phone)}<br>
+     📦 الباقة: ${planName} | 📅 الانتهاء: ${expiry}`;
+
+  const btn = document.getElementById("payPopupSendBtn");
+  btn.disabled = false;
+  btn.textContent = "📲 إرسال الآن";
+
+  document.getElementById("paymentPopup").style.display = "";
+}
+
+async function doSendPaymentRequest() {
+  if (!_paymentStoreId) return;
+  const btn = document.getElementById("payPopupSendBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ جاري الإرسال...";
+  try {
+    await api("POST", `/master/stores/${_paymentStoreId}/send-payment-request`);
+    showToast("✅ تم إرسال طلب الدفع بنجاح", "success");
+    closeModal("paymentPopup");
+    _paymentStoreId = null;
+  } catch(e) {
+    showToast("فشل الإرسال: " + (e.error || "خطأ"), "error");
+    btn.disabled = false;
+    btn.textContent = "📲 إرسال الآن";
+  }
+}
+
+// ─── Delete ────────────────────────────────────────────────────────────────────
+function confirmDelete(id, name) {
+  document.getElementById("deleteMsg").textContent = `هل أنت متأكد من حذف متجر "${name}"؟ لا يمكن التراجع.`;
+  document.getElementById("confirmDeleteBtn").onclick = async () => {
+    try {
+      await api("DELETE", `/master/stores/${id}`);
+      showToast("تم حذف المتجر", "warn");
+      closeModal("deleteModal");
+      refreshAll();
+      if (document.getElementById("storesView").style.display !== "none") loadStores();
+    } catch {
+      showToast("فشل الحذف", "error");
+    }
+  };
+  document.getElementById("deleteModal").style.display = "";
+}
+
+// ─── Orders ────────────────────────────────────────────────────────────────────
+async function openOrders(storeId, storeName) {
+  document.getElementById("ordersTitle").textContent = `📦 طلبات — ${storeName}`;
+  document.getElementById("ordersStats").innerHTML   = "<div style='color:var(--gray);font-size:13px'>جاري التحميل...</div>";
+  document.getElementById("ordersBody").innerHTML    = `<div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>`;
+  document.getElementById("ordersSlide").style.display = "";
+
+  try {
+    const { orders } = await api("GET", `/master/stores/${storeId}/orders`);
+    const today = new Date().toISOString().slice(0,10);
+    const todayOrders = orders.filter(o => (o.timestamp||"").slice(0,10) === today);
+    const totalRev    = orders.reduce((s,o) => s + (o.total||0), 0);
+
+    document.getElementById("ordersStats").innerHTML = `
+      <div class="slide-stat"><div class="val">${orders.length}</div><div class="lbl">إجمالي الطلبات</div></div>
+      <div class="slide-stat"><div class="val">${todayOrders.length}</div><div class="lbl">طلبات اليوم</div></div>
+      <div class="slide-stat"><div class="val">${totalRev.toFixed(0)}</div><div class="lbl">إجمالي الإيرادات</div></div>
+    `;
+
+    if (!orders.length) {
+      document.getElementById("ordersBody").innerHTML = `<div class="empty-state"><div class="icon">📭</div><h3>لا توجد طلبات بعد</h3><p>ستظهر الطلبات هنا عند وصولها</p></div>`;
+      return;
+    }
+
+    const rows = orders.map(o => {
+      const items = (o.items||[]).map(i => `${i.name}×${i.qty}`).join("، ");
+      const dt    = o.timestamp ? new Date(o.timestamp).toLocaleString("ar-EG",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+      return `<tr>
+        <td style="font-weight:700;color:var(--green)">${esc(o.orderId||"—")}</td>
+        <td>${esc(o.customerName||"—")}</td>
+        <td style="font-size:12px">${esc(o.customerPhone||"—")}</td>
+        <td class="order-items-mini" title="${esc(items)}">${esc(items)}</td>
+        <td style="font-weight:700">${(o.total||0).toFixed(2)}</td>
+        <td style="font-size:12px;color:var(--gray)">${dt}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("ordersBody").innerHTML = `<table>
+      <thead><tr><th>رقم الطلب</th><th>العميل</th><th>الجوال</th><th>المنتجات</th><th>الإجمالي</th><th>التاريخ</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  } catch {
+    document.getElementById("ordersBody").innerHTML = `<div class="empty-state"><div class="icon">❌</div><p>فشل تحميل الطلبات</p></div>`;
+  }
+}
+
+function closeOrders() {
+  document.getElementById("ordersSlide").style.display = "none";
+}
+
+// ─── Onboarding Message ────────────────────────────────────────────────────────
+async function copyInviteLink(storeId) {
+  try {
+    const data = await api("GET", `/master/stores/${storeId}/invite-link`);
+    await navigator.clipboard.writeText(data.link);
+    showToast("تم نسخ رابط الدعوة ✅", "success");
+  } catch {
+    const BASE = window.location.origin;
+    await navigator.clipboard.writeText(`${base}/store-admin.html?invite=${storeId}`).catch(() => {});
+    showToast("تم نسخ رابط الدعوة ✅", "success");
+  }
+}
+
+async function openOnboarding(storeId) {
+  const store = allStores.find(s => s.id === storeId);
+  if (!store) return;
+  currentOnboardingStore = store;
+
+  const BASE = window.location.origin;
+
+  // Try to get server-generated message first
+  let msg;
+  try {
+    const data = await api("GET", `/master/stores/${storeId}/onboarding`);
+    msg = data.whatsappMessage;
+  } catch {
+    // Fallback: build locally
+    msg = buildWelcomeMsg(store, base);
+  }
+
+  document.getElementById("onboardingText").textContent = msg;
+  document.getElementById("whatsappBtn").setAttribute("data-phone", store.ownerPhone || "");
+  document.getElementById("onboardingModal").style.display = "";
+}
+
+function buildWelcomeMsg(store, base) {
+  const name = store.ownerName ? `${store.ownerName}` : "عزيزي العميل";
+  return `مرحباً ${name} 👋
+
+تم تفعيل بوت واتساب لمتجر *${store.storeName || store.id}* بنجاح! ✅
+
+━━━━━━━━━━━━━━━━━━━━━
+📖 *دليل الإعداد الكامل (30 دقيقة):*
+${base}/onboarding.html?url=${encodeURIComponent(base)}
+
+🖥️ *لوحة التحكم:*
+${base}/store-admin.html
+
+━━━━━━━━━━━━━━━━━━━━━
+*ما ستفعله في الدليل:*
+
+1️⃣ *ربط واتساب بالبوت:*
+   • افتح developers.facebook.com
+   • أنشئ تطبيق → أضف WhatsApp
+   • Webhook URL: ${base}/webhook
+   • Verify Token: ${store.verifyToken || "(سيُرسل لك)"}
+   • فعّل حدث: messages ✅
+   • أرسل لنا: Phone Number ID + Access Token
+
+2️⃣ *ربط الحساب البنكي (Stripe):*
+   • سجّل في stripe.com مجاناً
+   • Developers → API Keys → انسخ Secret Key
+   • Developers → Webhooks → أضف: ${base}/payments/webhook
+   • أرسل لنا: Secret Key + Webhook Secret
+
+3️⃣ *إعداد لوحة التحكم:*
+   • افتح: ${base}/store-admin.html
+   • أضف المنيو، الشعار، ساعات العمل
+
+━━━━━━━━━━━━━━━━━━━━━
+💬 *الدعم الفني متاح:*
+9 صباحاً – 10 مساءً يومياً
+
+بعد الانتهاء أرسل كلمة *جاهز* وسنجري اختباراً فورياً 🚀`;
+}
+
+function copyOnboarding() {
+  const text = document.getElementById("onboardingText").textContent;
+  navigator.clipboard.writeText(text).then(() => showToast("تم نسخ الرسالة ✅", "success"));
+}
+
+function openWhatsApp() {
+  const phone = currentOnboardingStore?.ownerPhone;
+  if (!phone) { showToast("رقم الجوال غير متوفر", "error"); return; }
+  const text = encodeURIComponent(document.getElementById("onboardingText").textContent);
+  window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+function closeModal(id) {
+  document.getElementById(id).style.display = "none";
+}
+
+function subBadge(status, nextPayment) {
+  const days = daysUntil(nextPayment);
+  if (status === "active" && days >= 0 && days <= 7)
+    return `<span class="badge badge-warn">⚠️ ينتهي ${days}د</span>`;
+  if (status === "active")   return `<span class="badge badge-active">✅ نشط</span>`;
+  if (status === "expired")  return `<span class="badge badge-danger">❌ منتهي</span>`;
+  if (status === "suspended")return `<span class="badge badge-danger">🚫 موقوف</span>`;
+  if (status === "expiring") return `<span class="badge badge-warn">⚠️ ينتهي قريباً</span>`;
+  return `<span class="badge badge-gray">—</span>`;
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return -1;
+  return Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "—";
+  return new Date(dateStr).toLocaleDateString("ar-EG", {year:"numeric",month:"short",day:"numeric"});
+}
+
+function esc(s) {
+  if (s == null) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+let toastTimer;
+function showToast(msg, type = "") {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = "toast"; }, 3000);
+}
+
+// ─── Plans ─────────────────────────────────────────────────────────────────────
+const SYS_FEATURES = [
+  { key: "adminPanel",       label: "لوحة التحكم" },
+  { key: "invoiceImage",     label: "فاتورة صورة" },
+  { key: "customerRegistry", label: "سجل عملاء VIP" },
+  { key: "stripe",           label: "دفع إلكتروني Stripe" },
+];
+const PLAN_IDS = ["starter", "pro", "premium"];
+
+function renderPlansEditor(plans) {
+  const el = document.getElementById("plansEditor");
+  el.innerHTML = PLAN_IDS.map(pid => {
+    const p = plans[pid] || {};
+    const sf = p.sysFeatures || {};
+    const df = p.displayFeatures || [];
+    return `
+    <div class="plan-edit-card" data-plan="${pid}">
+      <div class="plan-edit-header">
+        <input class="plan-emoji-input" data-field="emoji" value="${p.emoji||""}" placeholder="🌱" maxlength="4">
+        <input class="plan-name-input" data-field="nameAr" value="${p.nameAr||""}" placeholder="اسم الباقة">
+        <div class="plan-price-wrap" style="margin-right:auto">
+          <input class="plan-price-input" data-field="price" type="number" value="${p.price??0}" min="0">
+          <span class="plan-price-unit">$ / شهر</span>
+        </div>
+      </div>
+      <div class="sys-features">
+        <div class="sys-feat-title">مميزات النظام</div>
+        ${SYS_FEATURES.map(f => `
+        <div class="sys-feat-row">
+          <input type="checkbox" id="sf_${pid}_${f.key}" data-sf="${f.key}" ${sf[f.key]?"checked":""}>
+          <label for="sf_${pid}_${f.key}">${f.label}</label>
+        </div>`).join("")}
+      </div>
+      <div class="display-features">
+        <div class="sys-feat-title">مميزات العرض للعميل</div>
+        <div class="df-list" id="dflist_${pid}">
+          ${df.map((d, i) => renderDFRow(pid, i, d)).join("")}
+        </div>
+        <button class="btn-add-feature" onclick="addDisplayFeature('${pid}')">➕ إضافة ميزة</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderDFRow(planId, idx, feat) {
+  const text    = typeof feat === "string" ? feat : (feat.text||"");
+  const enabled = typeof feat === "string" ? true  : ((feat.enabled ?? feat.included) !== false);
+  return `<div class="df-row" data-idx="${idx}">
+    <input type="checkbox" class="df-chk" ${enabled?"checked":""}>
+    <input type="text" class="df-text" value="${text.replace(/"/g,"&quot;")}" placeholder="نص الميزة">
+    <button class="df-del" onclick="removeDisplayFeature('${planId}',${idx})">🗑️</button>
+  </div>`;
+}
+
+function addDisplayFeature(planId) {
+  const list = document.getElementById("dflist_" + planId);
+  const idx  = list.querySelectorAll(".df-row").length;
+  list.insertAdjacentHTML("beforeend", renderDFRow(planId, idx, { text: "", enabled: true }));
+}
+
+function removeDisplayFeature(planId, idx) {
+  const list = document.getElementById("dflist_" + planId);
+  const rows = list.querySelectorAll(".df-row");
+  if (rows[idx]) rows[idx].remove();
+  list.querySelectorAll(".df-row").forEach((r, i) => {
+    r.dataset.idx = i;
+    const del = r.querySelector(".df-del");
+    if (del) del.setAttribute("onclick", `removeDisplayFeature('${planId}',${i})`);
+  });
+}
+
+function collectPlansFromDOM() {
+  const plans = {};
+  PLAN_IDS.forEach(pid => {
+    const card = document.querySelector(`.plan-edit-card[data-plan="${pid}"]`);
+    if (!card) return;
+    const sysFeatures = {};
+    SYS_FEATURES.forEach(f => {
+      const cb = card.querySelector(`[data-sf="${f.key}"]`);
+      sysFeatures[f.key] = cb ? cb.checked : false;
+    });
+    const displayFeatures = [];
+    card.querySelectorAll(".df-row").forEach(row => {
+      const text    = row.querySelector(".df-text")?.value?.trim() || "";
+      const enabled = row.querySelector(".df-chk")?.checked ?? true;
+      if (text) displayFeatures.push({ text, enabled });
+    });
+    plans[pid] = {
+      nameAr:          card.querySelector("[data-field='nameAr']")?.value?.trim() || "",
+      emoji:           card.querySelector("[data-field='emoji']")?.value?.trim()  || "",
+      price:           parseFloat(card.querySelector("[data-field='price']")?.value) || 0,
+      sysFeatures,
+      displayFeatures,
+    };
+  });
+  return plans;
+}
+
+async function loadPlanPrices() {
+  try {
+    const s = await api("GET", "/master/owner-settings");
+    ownerSettings = s;
+    const plans = s.plans || {};
+    renderPlansEditor(plans);
+  } catch { showToast("فشل تحميل الباقات", "error"); }
+}
+
+async function savePlans() {
+  const plans = collectPlansFromDOM();
+  const planPrices = { starter: plans.starter?.price||0, pro: plans.pro?.price||0, premium: plans.premium?.price||0 };
+  try {
+    await api("PUT", "/master/owner-settings", { plans, planPrices });
+    if (!ownerSettings) ownerSettings = {};
+    ownerSettings.plans = plans;
+    ownerSettings.planPrices = planPrices;
+    showToast("تم حفظ الباقات ✅", "success");
+  } catch { showToast("فشل الحفظ", "error"); }
+}
+
+// ─── Platform Leads ────────────────────────────────────────────────────────────
+async function loadPlatformLeads() {
+  const box = document.getElementById("leadsContainer");
+  if (!box) return;
+  try {
+    const { leads } = await api("GET", "/master/platform-leads");
+    if (!leads || !leads.length) {
+      box.innerHTML = `<div style="text-align:center;padding:40px;color:#6b7280">لا يوجد عملاء محتملون بعد</div>`;
+      return;
+    }
+    const planBadge = { starter: "🌱 أساسية", pro: "⭐ احترافية", premium: "👑 متقدمة" };
+    const contactedKey = k => "contacted_" + k;
+    const rows = leads.map((l, i) => {
+      const ckey   = contactedKey(l.phone + "_" + (l.timestamp||"").slice(0,10));
+      const done   = localStorage.getItem(ckey) === "1";
+      const status = done
+        ? `<span style="color:#16a34a;font-weight:600">✅ تم التواصل</span>`
+        : `<button class="btn btn-sm btn-outline" onclick="markContacted('${ckey}', this)">📞 تم التواصل</button>`;
+      const date   = l.timestamp ? l.timestamp.slice(0,16).replace("T"," ") : "—";
+      const plan   = planBadge[l.planKey] || l.planName || "—";
+      return `
+        <div class="store-card" style="margin-bottom:12px">
+          <div class="sc-meta">
+            <div class="sc-meta-item"><span class="sc-meta-label">الاسم</span><span class="sc-meta-val">${l.clientName||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">المشروع</span><span class="sc-meta-val">${l.businessName||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">النوع</span><span class="sc-meta-val">${l.businessType||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">المدينة</span><span class="sc-meta-val">${l.city||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">الباقة</span><span class="sc-meta-val">${plan}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">رقم البوت</span><span class="sc-meta-val" style="direction:ltr">${l.botPhone||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">رقم العميل</span><span class="sc-meta-val" style="direction:ltr">${l.phone||"—"}</span></div>
+            <div class="sc-meta-item"><span class="sc-meta-label">التاريخ</span><span class="sc-meta-val">${date}</span></div>
+            ${l.notes ? `<div class="sc-meta-item" style="grid-column:1/-1"><span class="sc-meta-label">ملاحظات</span><span class="sc-meta-val">${l.notes}</span></div>` : ""}
+          </div>
+          <div class="sc-actions" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <a class="btn btn-sm btn-outline" href="https://wa.me/${l.phone}" target="_blank">💬 واتساب</a>
+            <span id="status_${i}">${status}</span>
+          </div>
+        </div>`;
+    });
+    box.innerHTML = rows.join("");
+  } catch (e) {
+    box.innerHTML = `<div style="text-align:center;padding:40px;color:#dc2626">خطأ في التحميل</div>`;
+  }
+}
+
+function markContacted(ckey, btn) {
+  localStorage.setItem(ckey, "1");
+  const span = btn.closest("[id^='status_']") || btn.parentElement;
+  span.innerHTML = `<span style="color:#16a34a;font-weight:600">✅ تم التواصل</span>`;
+}
+
+// ─── Bank ───────────────────────────────────────────────────────────────────────
+async function loadBankSettings() {
+  try {
+    const s = await api("GET", "/master/owner-settings");
+    ownerSettings = s;
+    document.getElementById("b_bankName").value          = s.bankName          || "";
+    document.getElementById("b_holder").value            = s.accountHolder     || "";
+    document.getElementById("b_iban").value              = s.iban              || "";
+    document.getElementById("b_swift").value             = s.swift             || "";
+    document.getElementById("b_paypal").value            = s.paypalLink        || "";
+    document.getElementById("b_other").value             = s.otherPaymentLink  || "";
+    document.getElementById("b_supportPhone").value      = s.supportPhone      || "";
+    document.getElementById("b_accountNumber").value     = s.accountNumber     || "";
+    document.getElementById("b_paymentExtraNote").value  = s.paymentExtraNote  || "";
+    updateBankPreview();
+  } catch {}
+}
+
+function updateBankPreview() {
+  const bankName = document.getElementById("b_bankName")?.value     || "";
+  const holder   = document.getElementById("b_holder")?.value       || "";
+  const iban     = document.getElementById("b_iban")?.value         || "";
+  const swift    = document.getElementById("b_swift")?.value        || "";
+  const paypal   = document.getElementById("b_paypal")?.value       || "";
+  const other    = document.getElementById("b_other")?.value        || "";
+
+  const el = id => document.getElementById(id);
+  if (el("prev_bankName")) el("prev_bankName").textContent = bankName || "—";
+  if (el("prev_holder"))   el("prev_holder").textContent   = holder   || "—";
+  if (el("prev_iban"))     el("prev_iban").textContent      = iban ? "IBAN: " + iban : "IBAN: —";
+  if (el("prev_swift"))    el("prev_swift").textContent     = swift || "—";
+  if (el("prev_swift_wrap")) el("prev_swift_wrap").style.display = swift ? "" : "none";
+
+  const linksEl = el("prev_links");
+  if (linksEl) {
+    let html = "";
+    if (paypal) html += `<a class="payment-chip" href="${esc(paypal)}" target="_blank">💙 PayPal</a>`;
+    if (other)  html += `<a class="payment-chip" href="#" onclick="return false">💳 ${esc(other)}</a>`;
+    linksEl.innerHTML = html;
+  }
+}
+
+async function saveBankSettings() {
+  const data = {
+    bankName:          document.getElementById("b_bankName").value.trim(),
+    accountHolder:     document.getElementById("b_holder").value.trim(),
+    iban:              document.getElementById("b_iban").value.trim(),
+    swift:             document.getElementById("b_swift").value.trim(),
+    paypalLink:        document.getElementById("b_paypal").value.trim(),
+    otherPaymentLink:  document.getElementById("b_other").value.trim(),
+    supportPhone:      document.getElementById("b_supportPhone").value.trim(),
+    accountNumber:     document.getElementById("b_accountNumber").value.trim(),
+    paymentExtraNote:  document.getElementById("b_paymentExtraNote").value.trim(),
+  };
+  try {
+    await api("PUT", "/master/owner-settings", data);
+    Object.assign(ownerSettings, data);
+    showToast("تم حفظ البيانات البنكية ✅", "success");
+    updateBankPreview();
+  } catch { showToast("فشل الحفظ", "error"); }
+}
+
+// ─── Guide ──────────────────────────────────────────────────────────────────────
+const PLAN_NAMES  = { starter:"🌱 الأساسية", pro:"⭐ الاحترافية", premium:"👑 المتقدمة" };
+const PLAN_FEATS  = {
+  starter: ["استقبال الطلبات والحجوزات تلقائياً 24/7","قائمة منتجات وخدمات تفاعلية","لوحة تحكم الطلبات","إشعارات فورية للمالك","يعمل مع المطاعم والمقاهي والخدمات"],
+  pro:     ["كل مميزات الأساسية","فاتورة صورة تلقائية للعميل","سجل عملاء VIP","تقارير مبيعات يومية","برنامج نقاط الولاء"],
+  premium: ["كل مميزات الاحترافية","دفع إلكتروني بالبطاقة داخل واتساب","إرسال عروض جماعية للعملاء","أولوية الدعم الفني"],
+};
+
+function buildGuideMsg() {
+  const s = ownerSettings;
+  const clientName = document.getElementById("g_clientName")?.value?.trim() || "عزيزي العميل";
+  const storeName  = document.getElementById("g_storeName")?.value?.trim()  || "متجرك";
+  const plan       = document.getElementById("g_plan")?.value || "pro";
+  const planName   = PLAN_NAMES[plan]  || plan;
+  const planPrice  = (s.planPrices||{})[plan] || "—";
+  const feats      = (PLAN_FEATS[plan] || []).map(f => `   ✅ ${f}`).join("\n");
+  const isPremium  = plan === "premium";
+
+  const bankSection = (s.iban || s.paypalLink || s.otherPaymentLink) ? `
+━━━━━━━━━━━━━━━━━━━━━
+💳 *طريقة الدفع — ${planPrice}$ / شهر:*
+${s.bankName ? `🏦 البنك: ${s.bankName}` : ""}
+${s.accountHolder ? `👤 صاحب الحساب: ${s.accountHolder}` : ""}
+${s.iban ? `🔢 IBAN: ${s.iban}` : ""}
+${s.swift ? `🌐 Swift: ${s.swift}` : ""}
+${s.paypalLink ? `💙 PayPal: ${s.paypalLink}` : ""}
+${s.otherPaymentLink ? `💳 دفع آخر: ${s.otherPaymentLink}` : ""}
+
+_بعد التحويل أرسل صورة الإيصال لنُفعّل اشتراكك فوراً_ 🚀`.replace(/\n{3,}/g, "\n") : "";
+
+  const msg =
+`مرحباً ${clientName} 👋
+
+شكراً لاختيارك *BotHatim* — بوت واتساب الذكي لمتجر *${storeName}* 🎉
+
+━━━━━━━━━━━━━━━━━━━━━
+📦 *باقتك: ${planName}* — ${planPrice} ر.س / شهر
+
+${feats}
+━━━━━━━━━━━━━━━━━━━━━
+🔗 *خطوات التفعيل — 3 خطوات فقط:*
+
+*الخطوة 1 — ربط رقمك بالبوت (عبر QR):*
+1️⃣ سنرسل لك رابط لوحة التحكم
+2️⃣ اضغط زر *"ربط واتساب"* 📱
+3️⃣ افتح واتساب على هاتفك:
+   ⋮ (القائمة) ← *الأجهزة المرتبطة* ← *ربط جهاز*
+4️⃣ امسح رمز QR بكاميرا الهاتف
+5️⃣ انتظر ثوانٍ وستظهر ✅ *متصل بنجاح!*
+
+لا حاجة لحسابات مطورين — رقمك الحالي يكفي 🎯
+
+*الخطوة 2 — إعداد المتجر في لوحة التحكم:*
+🖥️ افتح الرابط الذي سنرسله لك
+   • أضف منتجاتك أو خدماتك مع الأسعار والصور
+   • حدّد أوقات العمل
+   • اكتب رسالة الترحيب الخاصة بمتجرك
+   • أضف فئات (مثلاً: مشروبات، وجبات، إضافات)
+
+*الخطوة 3 — اختبر البوت:*
+📲 أرسل *"مرحبا"* لرقمك المربوط من هاتف آخر
+👀 شاهد كيف يرد البوت فوراً!
+${bankSection}
+━━━━━━━━━━━━━━━━━━━━━
+💬 *الدعم الفني — متاح يومياً:*
+wa.me/${s.supportPhone || "966508572902"}
+⏰ ${s.supportHours || "9 صباحاً – 10 مساءً"}
+
+سنُفعّل بوتك خلال ساعات من استلام بياناتك إن شاء الله 🚀
+نتمنى لك مبيعات وفيرة 💰`;
+
+  const box = document.getElementById("guideMsgBox");
+  if (box) box.textContent = msg;
+}
+
+function copyGuide() {
+  const text = document.getElementById("guideMsgBox")?.textContent || "";
+  navigator.clipboard.writeText(text).then(() => showToast("تم نسخ الرسالة ✅", "success"));
+}
+
+function sendGuideWhatsApp() {
+  const phone = document.getElementById("g_clientPhone")?.value?.trim();
+  if (!phone) { showToast("أدخل رقم جوال العميل أولاً", "warn"); return; }
+  const text  = encodeURIComponent(document.getElementById("guideMsgBox")?.textContent || "");
+  window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+}
+
+// ─── API ────────────────────────────────────────────────────────────────────────
+async function api(method, path, body = null, withAuth = true) {
+  const opts = {
+    method,
+    headers: { "Content-Type": "application/json" },
+  };
+  if (withAuth) opts.headers["x-master-token"] = TOKEN;
+  if (body)     opts.body = JSON.stringify(body);
+
+  const res = await fetch(BASE + path, opts);
+  if (res.status === 401) { doLogout(); throw { status: 401 }; }
+  if (!res.ok) { const e = await res.json().catch(()=>{}); throw e || {}; }
+  return res.json();
+}
+
+// ─── WhatsApp Pairing — QR فقط ───────────────────────────────────────────────
+let _pairStoreId  = null;
+let _pairQrPoll   = null;
+let _pairQrStr    = null;
+let _pairTimerId  = null;
+
+function openPairModal(storeId) {
+  _pairStoreId = storeId;
+  _pairQrStr   = null;
+  // اسم المتجر
+  const store = allStores.find(s => s.id === storeId);
+  document.getElementById("pairStoreName").textContent = store?.storeName || storeId;
+  // إعادة الواجهة للحالة الافتراضية
+  document.getElementById("pairWaiting").style.display = "";
+  document.getElementById("pairQrBox").style.display   = "none";
+  document.getElementById("pairSuccess").style.display = "none";
+  document.getElementById("pairBtn").disabled = false;
+  document.getElementById("pairModal").style.display   = "";
+  // اطلب QR مباشرة عند الفتح
+  requestPairing();
+}
+
+function closePairModal() {
+  document.getElementById("pairModal").style.display = "none";
+  if (_pairQrPoll)  { clearInterval(_pairQrPoll);  _pairQrPoll  = null; }
+  if (_pairTimerId) { clearInterval(_pairTimerId);  _pairTimerId = null; }
+  _pairStoreId = null; _pairQrStr = null;
+}
+
+async function requestPairing() {
+  if (!_pairStoreId) return;
+  const btn = document.getElementById("pairBtn");
+  btn.disabled = true; btn.textContent = "⏳ جاري...";
+  _pairQrStr = null;
+  document.getElementById("pairQrBox").style.display   = "none";
+  document.getElementById("pairWaiting").style.display = "";
+  document.getElementById("pairSuccess").style.display = "none";
+  try {
+    await api("POST", `/master/stores/${_pairStoreId}/wa-start-qr`);
+  } catch {}
+  btn.disabled = false; btn.textContent = "📷 QR جديد";
+  startPairPolling();
+}
+
+function startPairPolling() {
+  if (_pairQrPoll) clearInterval(_pairQrPoll);
+  _pairQrPoll = setInterval(async () => {
+    if (!_pairStoreId) return;
+    try {
+      const d = await api("GET", `/master/stores/${_pairStoreId}/wa-status`);
+      updateWaBadge(_pairStoreId, d.status);
+      if (d.status === "qr" && d.qr && d.qr !== _pairQrStr) {
+        _pairQrStr = d.qr;
+        renderPairQR(d.qr);
+      } else if (d.status === "open") {
+        clearInterval(_pairQrPoll); _pairQrPoll = null;
+        if (_pairTimerId) { clearInterval(_pairTimerId); _pairTimerId = null; }
+        document.getElementById("pairQrBox").style.display   = "none";
+        document.getElementById("pairWaiting").style.display = "none";
+        document.getElementById("pairSuccess").style.display = "";
+        showToast("✅ واتساب متصل بنجاح!", "success");
+        loadStores();
+      }
+    } catch {}
+  }, 3000);
+  setTimeout(() => { if(_pairQrPoll){ clearInterval(_pairQrPoll); _pairQrPoll=null; } }, 5*60*1000);
+}
+
+function renderPairQR(qrStr) {
+  const canvas = document.getElementById("pairQrCanvas");
+  canvas.innerHTML = "";
+  try {
+    new QRCode(canvas, { text: qrStr, width:220, height:220, colorDark:"#1b5e20", colorLight:"#ffffff", correctLevel: QRCode.CorrectLevel.M });
+  } catch(e) { canvas.textContent = "تعذّر عرض QR"; }
+  document.getElementById("pairWaiting").style.display = "none";
+  document.getElementById("pairQrBox").style.display   = "";
+  startPairTimer(60);
+}
+
+function startPairTimer(sec) {
+  if (_pairTimerId) clearInterval(_pairTimerId);
+  let s = sec;
+  const el = document.getElementById("pairQrTimer");
+  if (el) el.textContent = s;
+  _pairTimerId = setInterval(() => {
+    s--;
+    const e = document.getElementById("pairQrTimer");
+    if (e) { e.textContent = Math.max(0,s); e.style.color = s<15 ? "#dc2626" : "var(--green)"; }
+    if (s <= 0) clearInterval(_pairTimerId);
+  }, 1000);
+}
+
+async function pollWaStatus(storeId, seconds) {
+  for (let i = 0; i < seconds; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const d = await api("GET", `/master/stores/${storeId}/wa-status`);
+      updateWaBadge(storeId, d.status);
+      if (d.status === "open") { showToast("✅ واتساب متصل بنجاح!", "success"); return; }
+    } catch {}
+  }
+}
+
+async function loadWaStatuses() {
+  try {
+    const { sessions } = await api("GET", "/master/wa-sessions");
+    for (const s of (sessions||[])) updateWaBadge(s.storeId, s.status);
+  } catch {}
+}
+
+function updateWaBadge(storeId, status) {
+  const labels = { open:"✅ متصل", connected:"✅ متصل", qr:"📷 QR جاهز", connecting:"⏳ جاري...", disconnected:"❌ غير متصل", pairing:"⏳ ربط...", reconnecting:"🔄 إعادة الاتصال" };
+  const classes = { open:"connected", connected:"connected", qr:"pairing", connecting:"pairing", disconnected:"disconnected", reconnecting:"reconnecting" };
+  document.querySelectorAll("#wa_status_" + storeId).forEach(el => {
+    el.textContent = labels[status] || status || "—";
+    el.className = "wa-badge " + (classes[status] || status || "disconnected");
+  });
+}
+
+</script>
+
+<!-- ══════════════════════════ PAIRING MODAL — QR فقط ════════════════════════ -->
+<div id="pairModal" class="overlay" style="display:none" onclick="if(event.target===this)closePairModal()">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <h2>📷 ربط واتساب — QR</h2>
+      <button class="modal-close" onclick="closePairModal()">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center">
+      <!-- اسم المتجر -->
+      <div id="pairStoreName" style="font-size:15px;font-weight:700;color:var(--green);margin-bottom:14px"></div>
+
+      <!-- انتظار -->
+      <div id="pairWaiting" style="padding:24px;color:var(--gray)">
+        <div style="font-size:36px;margin-bottom:8px">⏳</div>
+        <p style="font-size:14px;font-weight:600">جاري تهيئة الجلسة...</p>
+      </div>
+
+      <!-- QR -->
+      <div id="pairQrBox" style="display:none">
+        <div id="pairQrCanvas" style="display:inline-block;padding:10px;background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.12);margin-bottom:12px"></div>
+        <div style="font-size:13px;color:var(--gray);margin-bottom:8px">
+          ⏱ ينتهي خلال <strong id="pairQrTimer" style="color:var(--green)">60</strong> ثانية
+        </div>
+        <div style="font-size:12px;color:var(--gray);line-height:1.8;padding:10px;background:var(--bg);border-radius:8px;text-align:right">
+          ١. افتح واتساب على هاتف المتجر<br>
+          ٢. الإعدادات ← <strong>الأجهزة المرتبطة</strong> ← ربط جهاز<br>
+          ٣. وجّه الكاميرا للرمز أعلاه
+        </div>
+      </div>
+
+      <!-- نجاح -->
+      <div id="pairSuccess" style="display:none;padding:20px">
+        <div style="font-size:48px;margin-bottom:8px">🎉</div>
+        <p style="font-size:16px;font-weight:800;color:var(--green)">تم الربط بنجاح!</p>
+        <p style="font-size:13px;color:var(--gray);margin-top:4px">البوت يستقبل الطلبات الآن</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closePairModal()">إغلاق</button>
+      <button class="btn btn-primary" id="pairBtn" onclick="requestPairing()">📷 QR جديد</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+
+

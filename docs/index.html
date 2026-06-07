@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BotHatim — بوت واتساب ذكي لمطعمك وكافيهك</title>
-<meta name="description" content="حوّل واتساب إلى موظف طلبات لا يتعب — استقبل الطلبات تلقائياً لمطعمك أو مقهاك برقمك الخاص، ربطه في 5 دقائق بدون أي خبرة تقنية.">
-<meta property="og:title" content="BotHatim — بوت واتساب للمطاعم والكافيهات">
-<meta property="og:description" content="استقبل الطلبات تلقائياً · فواتير صور · تقارير يومية · لوحة تحكم كاملة">
+<title>BotHatim — بوت واتساب ذكي للمطاعم والكافيهات والخدمات</title>
+<meta name="description" content="حوّل واتساب إلى موظف لا يتعب — استقبل الطلبات والحجوزات تلقائياً لمطعمك أو مقهاك أو أي نشاط تجاري برقمك الخاص، ربطه في 5 دقائق بدون أي خبرة تقنية.">
+<meta property="og:title" content="BotHatim — بوت واتساب للمطاعم والكافيهات والخدمات">
+<meta property="og:description" content="استقبل الطلبات والحجوزات تلقائياً · فواتير صور · تقارير يومية · لوحة تحكم كاملة">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet">
@@ -393,7 +393,7 @@ footer a:hover{opacity:.8}
     <div class="ctr">
       <span class="tag">✨ المميزات</span>
       <h2 class="sec-h">كل ما يحتاجه مشروعك في بوت واحد</h2>
-      <p class="sec-p">ليس مجرد بوت — نظام متكامل يُدير طلباتك ويُنمّي علاقتك بعملائك تلقائياً</p>
+      <p class="sec-p">ليس مجرد بوت — نظام متكامل يُدير طلباتك وحجوزاتك ويُنمّي علاقتك بعملائك تلقائياً<br><span style="font-size:13px;color:var(--green);font-weight:600">✅ مطاعم وكافيهات · مخابز وعصائر · صالونات · خدمات منزلية · أي نشاط تجاري</span></p>
     </div>
     <div class="feat-grid reveal">
       <div class="feat-card">
@@ -436,6 +436,16 @@ footer a:hover{opacity:.8}
         <h3>بث رسائل للعملاء</h3>
         <p>أرسل عروضاً وإشعارات لكل عملائك السابقين برسالة واحدة من لوحة التحكم</p>
       </div>
+      <div class="feat-card">
+        <span class="feat-icon">🛎️</span>
+        <h3>مناسب لكل الأنشطة</h3>
+        <p>مطاعم، كافيهات، صالونات، غسيل سيارات، خدمات منزلية — أي نشاط يقدّم منتجات أو خدمات بمقابل</p>
+      </div>
+      <div class="feat-card">
+        <span class="feat-icon">📅</span>
+        <h3>حجوزات بوقت محدد</h3>
+        <p>العميل يحدد اليوم والوقت — البوت يُنبّهك قبل الموعد تلقائياً. مثالي للخدمات والمواعيد</p>
+      </div>
     </div>
   </div>
 </section>
@@ -457,9 +467,9 @@ footer a:hover{opacity:.8}
       </div>
       <div class="step">
         <div class="step-n">2</div>
-        <div class="step-icon">🔗</div>
-        <h3>اربط رقمك في دقيقة</h3>
-        <p>نرسل لك كوداً من 8 أحرف — تُدخله في واتساب تحت "الأجهزة المرتبطة" — انتهى، البوت متصل برقمك</p>
+        <div class="step-icon">📱</div>
+        <h3>اربط رقمك بمسح QR</h3>
+        <p>نرسل لك رابط لوحة التحكم — افتح واتساب على هاتفك، اضغط "الأجهزة المرتبطة" وامسح رمز QR. انتهى خلال ثوانٍ!</p>
       </div>
       <div class="step">
         <div class="step-n">3</div>
@@ -561,7 +571,28 @@ footer a:hover{opacity:.8}
           <p class="reg-s">هذه البيانات ستُستخدم لإعداد بوتك بشكل صحيح من اليوم الأول</p>
           <div class="rfield"><label>اسم المتجر / المشروع *</label><input id="r_store" type="text" placeholder="مثال: مقهى النخيل"></div>
           <div class="rfield"><label>نوع المشروع *</label>
-            <select id="r_type"><option value="">اختر نوع مشروعك...</option><option>كافيه ☕</option><option>مطعم 🍽️</option><option>مخبز 🥐</option><option>عصائر 🧋</option><option>برجر 🍔</option><option>بقالة 🛒</option><option>حلويات 🎂</option><option>أخرى</option></select>
+            <select id="r_type">
+              <option value="">اختر نوع مشروعك...</option>
+              <optgroup label="🍽️ أغذية ومشروبات">
+                <option>كافيه ☕</option>
+                <option>مطعم 🍽️</option>
+                <option>مخبز 🥐</option>
+                <option>عصائر 🧋</option>
+                <option>برجر 🍔</option>
+                <option>حلويات 🎂</option>
+                <option>بقالة 🛒</option>
+              </optgroup>
+              <optgroup label="💼 خدمات">
+                <option>صالون حلاقة ✂️</option>
+                <option>صالون تجميل 💄</option>
+                <option>غسيل سيارات 🚗</option>
+                <option>صيانة أجهزة 🔧</option>
+                <option>خدمات منزلية 🏠</option>
+                <option>عيادة / صحة 🏥</option>
+                <option>تصوير / تصميم 📸</option>
+              </optgroup>
+              <option>أخرى</option>
+            </select>
           </div>
           <div class="rfield"><label>المدينة</label><input id="r_city" type="text" placeholder="مثال: الرياض"></div>
           <div class="reg-acts">
@@ -625,7 +656,7 @@ footer a:hover{opacity:.8}
           هل أحتاج رقم واتساب جديد أم يعمل على رقمي الحالي؟
           <span class="faq-ico">+</span>
         </div>
-        <div class="faq-a">يعمل البوت على رقمك الحالي تماماً — لا تحتاج شراء رقم جديد. يكفي فتح واتساب على هاتفك وإدخال الكود الذي نرسله لك تحت "الأجهزة المرتبطة". رقمك يبقى معك وتواصل استخدامه بشكل طبيعي.</div>
+        <div class="faq-a">يعمل البوت على رقمك الحالي تماماً — لا تحتاج شراء رقم جديد. نرسل لك رابط لوحة التحكم، تفتحه وتضغط "ربط واتساب"، ثم تمسح رمز QR من واتساب (الأجهزة المرتبطة → ربط جهاز). الربط يتم في ثوانٍ بدون أي خبرة تقنية.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q" onclick="toggleFaq(this)">
