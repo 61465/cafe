@@ -920,7 +920,7 @@ async function submitReg(){
   const btn=document.querySelector(".btn-rn");
   if(btn){btn.disabled=true;btn.textContent="⏳ جاري الإرسال...";}
   try{
-    const SERVER_URL="https://eng-formed-shoulder-operator.trycloudflare.com";
+    const SERVER_URL="https://bothatim-vps.tail19ddab.ts.net";
     const r=await fetch(SERVER_URL+"/api/register-request",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
