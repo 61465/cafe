@@ -367,6 +367,8 @@ router.post("/store/products", auth, (req, res) => {
     description:   (req.body.description || "").trim(),
     price:         parseFloat(req.body.price) || 0,
     imageUrl:      req.body.imageUrl || null,
+    videoUrl:      sanitizeVideoUrl(req.body.videoUrl),
+    videoCaption:  String(req.body.videoCaption || "").trim().slice(0, 200),
     available:     true,
     sizes:         cleanSizes,
     stock:         cleanStock,
@@ -407,6 +409,8 @@ router.put("/store/products/:id", auth, (req, res) => {
       patch.stock = Number.isFinite(n) && n >= 0 ? n : 0;
     }
   }
+  if (patch.videoUrl !== undefined)     patch.videoUrl = sanitizeVideoUrl(patch.videoUrl);
+  if (patch.videoCaption !== undefined) patch.videoCaption = String(patch.videoCaption || "").trim().slice(0, 200);
 
   const products = (store.products || []).map(p =>
     p.id === req.params.id ? { ...p, ...patch, id: p.id } : p
@@ -414,6 +418,20 @@ router.put("/store/products/:id", auth, (req, res) => {
   updateStore(req.storeId, { products });
   res.json({ ok: true });
 });
+
+// ── Helper: sanitize video URL (allow YouTube, Vimeo, direct mp4, Drive) ──────
+function sanitizeVideoUrl(url) {
+  if (!url) return null;
+  const s = String(url).trim();
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (!["http:", "https:"].includes(u.protocol)) return null;
+    // basic length cap
+    if (s.length > 500) return null;
+    return s;
+  } catch { return null; }
+}
 
 router.delete("/store/products/:id", auth, (req, res) => {
   const store = getStore(req.storeId);
@@ -1109,6 +1127,153 @@ router.post("/store/broadcast", auth, async (req, res) => {
     estimatedMinutes: estimatedMin,
     message: `جاري الإرسال لـ ${willSend} عميل (${estimatedMin} دقيقة تقريباً) 📢`,
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── ACCOUNTING — مدير الحسابات ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+const accounting    = require("./accounting");
+const aiAccountant  = require("./ai-accountant");
+
+const actorFor = (req) => ({ type: "store", id: req.storeId });
+
+// ── KPIs dashboard للحسابات
+router.get("/store/accounting/dashboard", auth, (req, res) => {
+  try {
+    const kpis = accounting.getDashboardKPIs(req.storeId);
+    res.json(kpis);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── تكاليف المنتجات
+router.get("/store/accounting/product-costs", auth, (req, res) => {
+  const store = getStore(req.storeId);
+  if (!store) return res.status(404).json({ error: "المتجر غير موجود" });
+  const costs = accounting.getAllProductCosts(req.storeId);
+  const products = (store.products || []).map(p => {
+    const c = costs[p.id];
+    const cost = c?.cost ?? 0;
+    const profit = (p.price || 0) - cost;
+    const margin = (p.price || 0) > 0 ? (profit / p.price) * 100 : 0;
+    return {
+      id: p.id,
+      name: p.name,
+      price: p.price || 0,
+      cost,
+      profit: Math.round(profit * 100) / 100,
+      margin: Math.round(margin * 10) / 10,
+      updatedAt: c?.updatedAt || null,
+      historyCount: (c?.history || []).length,
+    };
+  });
+  res.json({ products });
+});
+
+router.put("/store/accounting/product-costs/:productId", auth, (req, res) => {
+  const { cost } = req.body || {};
+  if (cost === undefined || cost === null) return res.status(400).json({ error: "التكلفة مطلوبة" });
+  try {
+    const entry = accounting.setProductCost(req.storeId, req.params.productId, Number(cost), actorFor(req), req);
+    res.json({ ok: true, cost: entry.cost });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.get("/store/accounting/product-costs/:productId/history", auth, (req, res) => {
+  const all = accounting.getAllProductCosts(req.storeId);
+  res.json({ history: all[req.params.productId]?.history || [], current: all[req.params.productId]?.cost ?? 0 });
+});
+
+// ── المصاريف
+router.get("/store/accounting/expenses", auth, (req, res) => {
+  const list = accounting.listExpenses(req.storeId, {
+    yearMonth: req.query.month,
+    year:      req.query.year,
+  });
+  res.json({ expenses: list, types: accounting.EXPENSE_TYPES });
+});
+
+router.post("/store/accounting/expenses", auth, (req, res) => {
+  try {
+    const entry = accounting.addExpense(req.storeId, req.body || {}, actorFor(req), req);
+    res.json({ ok: true, expense: entry });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete("/store/accounting/expenses/:expenseId", auth, (req, res) => {
+  const ok = accounting.deleteExpense(req.storeId, req.params.expenseId, actorFor(req), req);
+  if (!ok) return res.status(404).json({ error: "مصروف غير موجود" });
+  res.json({ ok: true });
+});
+
+// ── P&L شهري
+router.get("/store/accounting/monthly/:yearMonth", auth, (req, res) => {
+  try {
+    const stored = accounting.getStoredMonthlyPnL(req.storeId, req.params.yearMonth);
+    const data = stored || accounting.calculateMonthlyPnL(req.storeId, req.params.yearMonth);
+    res.json({ ...data, closed: !!stored?.closed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/store/accounting/monthly/:yearMonth/close", auth, (req, res) => {
+  try {
+    const closed = accounting.closeMonth(req.storeId, req.params.yearMonth, actorFor(req), req);
+    res.json({ ok: true, ...closed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.get("/store/accounting/monthly", auth, (req, res) => {
+  res.json({ months: accounting.listMonthlyReports(req.storeId) });
+});
+
+// ── ملخص سنوي + تقفيل السنة
+router.get("/store/accounting/yearly/:year", auth, (req, res) => {
+  try { res.json(accounting.calculateYearlySummary(req.storeId, req.params.year)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/store/accounting/yearly/:year/close", auth, (req, res) => {
+  try {
+    const closed = accounting.closeYear(req.storeId, req.params.year, actorFor(req), req);
+    res.json({ ok: true, ...closed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── المنتجات الأكثر ربحية
+router.get("/store/accounting/top-products", auth, (req, res) => {
+  const ym = req.query.month || new Date().toISOString().slice(0, 7);
+  const pnl = accounting.calculateMonthlyPnL(req.storeId, ym);
+  res.json({
+    yearMonth: ym,
+    top:   pnl.topProducts,
+    worst: pnl.worstProducts,
+  });
+});
+
+// ── نصائح AI المحاسب
+router.post("/store/accounting/ai-advice", auth, async (req, res) => {
+  try {
+    const store = getStore(req.storeId);
+    const ym = req.body?.yearMonth || new Date().toISOString().slice(0, 7);
+    const pnl = accounting.calculateMonthlyPnL(req.storeId, ym);
+    const bizType = store?.adminConfig?.businessType || store?.businessType || "generic";
+    const advice = await aiAccountant.analyzeMonthlyPnL(bizType, pnl);
+    res.json({ yearMonth: ym, businessType: bizType, ...advice });
+  } catch (e) {
+    console.error("[ai-advice]", e.message);
+    res.status(500).json({ error: "تعذّر تحليل البيانات حالياً" });
+  }
+});
+
+// ── توصية فيديو AI لمنتج
+router.post("/store/products/:id/video-recommend", auth, async (req, res) => {
+  try {
+    const store = getStore(req.storeId);
+    const product = (store?.products || []).find(p => p.id === req.params.id);
+    if (!product) return res.status(404).json({ error: "المنتج غير موجود" });
+    const bizType = store?.adminConfig?.businessType || store?.businessType || "generic";
+    const rec = await aiAccountant.recommendVideoType(bizType, product.name, product.description);
+    res.json(rec);
+  } catch (e) { res.status(500).json({ error: "تعذّر التوصية حالياً" }); }
 });
 
 // ─── Menu Image (authenticated) ──────────────────────────────────────────────

@@ -276,10 +276,12 @@ const TAB_ALIAS = {
   bookings:  "orders",  // حجوزات → tab الطلبات
 };
 
+// Core tabs — تظهر دائماً بصرف النظر عن AI config (إن كانت متاحة لباقة المتجر)
+const CORE_TABS = ["dash", "broadcast", "loyalty", "customers", "archive", "accounting", "settings", "whatsapp"];
+
 function applyTabsOrder(orderedTabIds) {
   const tabContainer = document.querySelector(".tabs");
   if (!tabContainer) return;
-  // أبقِ "dash" (لوحة التحكم) دائماً ظاهراً
   const allTabs = Array.from(tabContainer.querySelectorAll(".tab"));
   const tabMap = {};
   allTabs.forEach(t => {
@@ -287,16 +289,22 @@ function applyTabsOrder(orderedTabIds) {
     tabMap[id] = t;
   });
   // resolve aliases من AI IDs → HTML IDs
-  const htmlTabIds = orderedTabIds.map(id => TAB_ALIAS[id] || id);
-  // dash يبقى دائماً في البداية
-  const finalOrder = ["dash", ...htmlTabIds.filter(id => id !== "dash")];
+  const htmlTabIds = (orderedTabIds || []).map(id => TAB_ALIAS[id] || id);
+  // dash أولاً، ثم AI tabs المرتبة، ثم core tabs غير المذكورة
+  const aiSet = new Set(htmlTabIds);
+  const coreExtras = CORE_TABS.filter(id => !aiSet.has(id) && id !== "dash");
+  const finalOrder = ["dash", ...htmlTabIds.filter(id => id !== "dash"), ...coreExtras];
+
+  // احفظ الحالة الأصلية للـ tabs المخفية بـ plan (مثل broadcast/customers في starter)
+  const planHidden = {};
+  allTabs.forEach(t => { planHidden[t.id] = t.style.display === "none"; });
 
   // إخفاء كل الـ tabs أولاً
   allTabs.forEach(t => t.style.display = "none");
-  // إعادة ترتيب + إظهار الموصى به
+  // إظهار حسب الترتيب — مع احترام إخفاء plan
   finalOrder.forEach(id => {
     const t = tabMap[id];
-    if (t) {
+    if (t && !planHidden[t.id]) {
       t.style.display = "";
       tabContainer.appendChild(t);
     }

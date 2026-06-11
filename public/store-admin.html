@@ -729,6 +729,7 @@ tr:hover td{background:#fafcfa}
     <button class="tab"        id="tabBroadcast" onclick="showTab('broadcast')">📢 بث رسالة</button>
     <button class="tab"        id="tabLoyalty"   onclick="showTab('loyalty')">🏆 نقاط الولاء</button>
     <button class="tab"        id="tabArchive"   onclick="showTab('archive')">📚 الأرشيف</button>
+    <button class="tab"        id="tabAccounting" onclick="showTab('accounting')">💼 الحسابات</button>
     <button class="tab"        id="tabWhatsapp"  onclick="showTab('whatsapp')">📱 ربط واتساب</button>
   </div>
 
@@ -1214,6 +1215,22 @@ tr:hover td{background:#fafcfa}
             <button type="button" class="btn" style="padding:8px 14px;font-size:13px;background:#f3f4f6;color:var(--gray)" onclick="clearProductImage()">🗑️ إزالة</button>
           </div>
           <span class="hint">PNG, JPG, WEBP — حجم أقصى 3MB</span>
+        </div>
+
+        <!-- 🎬 فيديو توضيحي / استعراضي -->
+        <div class="field full" style="margin-top:14px;padding:14px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px">
+          <label style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <span>🎬 فيديو توضيحي/استعراضي (اختياري)</span>
+            <button type="button" class="btn" style="padding:5px 12px;font-size:12px;background:#16a34a;color:#fff" onclick="getAIVideoRecommendation()">🤖 اقترح نوع الفيديو</button>
+          </label>
+          <input type="url" id="pm_videoUrl" placeholder="https://youtube.com/watch?v=... أو رابط مباشر mp4"
+            style="width:100%;padding:10px;border:1px solid #fcd34d;border-radius:8px;font-size:13px;direction:ltr;text-align:left;background:#fff;margin-top:6px;box-sizing:border-box">
+          <input type="text" id="pm_videoCaption" placeholder="عنوان قصير للفيديو (اختياري)" maxlength="200"
+            style="width:100%;padding:10px;border:1px solid #fcd34d;border-radius:8px;font-size:13px;background:#fff;margin-top:8px;box-sizing:border-box">
+          <div id="pm_videoAIRec" style="display:none;margin-top:10px;padding:10px;background:#fff;border:1px solid #86efac;border-radius:8px;font-size:12.5px;line-height:1.7"></div>
+          <div style="margin-top:6px;color:#78350f;font-size:11px">
+            💡 يدعم: YouTube, Vimeo, Google Drive، أو رابط mp4 مباشر — يُعرض للعميل في صفحة المنتج
+          </div>
           <div style="margin-top:6px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#166534;line-height:1.6">
             📐 <strong>الأبعاد المثالية:</strong> 800×800 بكسل (مربعة) — يظهر المنتج بشكل احترافي في الواتساب<br>
             💡 صور مستطيلة أو مشوّهة تُقلّل جودة العرض — استخدم محرر صور للقص المسبق
@@ -1269,6 +1286,132 @@ tr:hover td{background:#fafcfa}
 
     <!-- ── Archive ── -->
     <section id="archiveSection" style="display:none"></section>
+
+    <!-- ══════════════════════ Accounting / مدير الحسابات ══════════════════════ -->
+    <section id="accountingSection" style="display:none">
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+          <div>
+            <h2 style="font-size:20px;font-weight:800;color:var(--primary);margin:0">💼 مدير الحسابات</h2>
+            <p style="color:#6b7280;font-size:13px;margin:4px 0 0">محاسب ذكي مربوط بـ AI — يتخصص حسب نشاط متجرك</p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="accMonthPicker" onchange="loadAccountingMonth()" style="padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px"></select>
+            <button class="btn btn-outline" onclick="loadAccountingDashboard()">🔄 تحديث</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div id="accKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px"></div>
+
+      <!-- AI Advice Card -->
+      <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+          <h3 style="font-size:16px;font-weight:800;color:#166534;margin:0">🤖 نصائح المحاسب الذكي</h3>
+          <button class="btn btn-primary" onclick="loadAIAdvice()" id="aiAdviceBtn" style="background:#16a34a">✨ احصل على نصيحة</button>
+        </div>
+        <div id="aiAdviceResult" style="font-size:13.5px;line-height:1.8;color:#14532d"></div>
+      </div>
+
+      <!-- Sub-tabs -->
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab active" id="subTabCosts"    onclick="showAccSubTab('costs')">💰 تكاليف المنتجات</button>
+        <button class="tab"        id="subTabExpenses" onclick="showAccSubTab('expenses')">📒 المصاريف</button>
+        <button class="tab"        id="subTabPnL"      onclick="showAccSubTab('pnl')">📊 الأرباح والخسائر</button>
+        <button class="tab"        id="subTabYear"     onclick="showAccSubTab('year')">📅 الملخص السنوي</button>
+      </div>
+
+      <!-- Product Costs -->
+      <div id="accCosts" class="card" style="margin-bottom:16px">
+        <h3 style="font-size:15px;font-weight:800;margin-bottom:10px">تكاليف المنتجات + هامش الربح</h3>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="background:#f3f4f6">
+                <th style="padding:10px;text-align:right;border-bottom:1px solid #e5e7eb">المنتج</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">سعر البيع</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">التكلفة</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">الربح/قطعة</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">الهامش %</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">إجراء</th>
+              </tr>
+            </thead>
+            <tbody id="accCostsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Expenses -->
+      <div id="accExpenses" class="card" style="display:none;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:800;margin:0">المصاريف التشغيلية</h3>
+          <button class="btn btn-primary" onclick="openAddExpenseModal()">➕ إضافة مصروف</button>
+        </div>
+        <div id="accExpensesByType" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px"></div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="background:#f3f4f6">
+                <th style="padding:10px;text-align:right;border-bottom:1px solid #e5e7eb">النوع</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">المبلغ</th>
+                <th style="padding:10px;text-align:right;border-bottom:1px solid #e5e7eb">ملاحظة</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb">التاريخ</th>
+                <th style="padding:10px;text-align:center;border-bottom:1px solid #e5e7eb"></th>
+              </tr>
+            </thead>
+            <tbody id="accExpensesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- P&L -->
+      <div id="accPnl" class="card" style="display:none;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:800;margin:0">قائمة الأرباح والخسائر — <span id="pnlMonthLabel">—</span></h3>
+          <button class="btn btn-outline" onclick="closeAccountingMonth()" id="closeMonthBtn">🔒 تقفيل الشهر</button>
+        </div>
+        <div id="accPnlContent"></div>
+      </div>
+
+      <!-- Year Summary -->
+      <div id="accYear" class="card" style="display:none;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:800;margin:0">الملخص السنوي — <select id="yearPicker" onchange="loadYearSummary()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px"></select></h3>
+          <button class="btn btn-outline" onclick="closeAccountingYear()" id="closeYearBtn">🔒 تقفيل السنة</button>
+        </div>
+        <div id="accYearContent"></div>
+      </div>
+    </section>
+
+    <!-- Add Expense Modal -->
+    <div id="expenseModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+      <div style="background:#fff;border-radius:12px;max-width:440px;width:92%;padding:22px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="font-size:17px;font-weight:800;margin:0">➕ مصروف جديد</h3>
+          <button style="background:none;border:none;font-size:22px;cursor:pointer" onclick="document.getElementById('expenseModal').style.display='none'">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:13px">نوع المصروف</label>
+            <select id="expType" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px"></select>
+          </div>
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:13px">المبلغ (ر.س)</label>
+            <input id="expAmount" type="number" min="0" step="0.01" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px">
+          </div>
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:13px">ملاحظة (اختياري)</label>
+            <input id="expNote" type="text" maxlength="200" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px">
+          </div>
+          <div>
+            <label style="display:block;font-weight:700;margin-bottom:6px;font-size:13px">التاريخ</label>
+            <input id="expDate" type="date" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px">
+          </div>
+          <button class="btn btn-primary" onclick="saveExpense()" style="margin-top:6px">💾 حفظ المصروف</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Loyalty Points (Settings + Cards + Coupons) ── -->
     <section id="loyaltySection" style="display:none">
@@ -1812,7 +1955,7 @@ function toggleDeliveryFeeS() {
 }
 
 function showTab(tab) {
-  ["dash","menu","orders","settings","customers","broadcast","loyalty","whatsapp","archive"].forEach(t => {
+  ["dash","menu","orders","settings","customers","broadcast","loyalty","whatsapp","archive","accounting"].forEach(t => {
     const sec = document.getElementById(t + "Section");
     const btn = document.getElementById("tab" + t.charAt(0).toUpperCase() + t.slice(1));
     if (sec) sec.style.display = t === tab ? "" : "none";
@@ -1827,10 +1970,367 @@ function showTab(tab) {
     document.getElementById("customersContent").style.display = locked ? "none" : "";
     if (!locked) loadCustomers();
   }
-  if (tab === "broadcast") initBroadcast();
-  if (tab === "loyalty")   loadLoyalty();
-  if (tab === "archive")   loadArchives();
-  if (tab === "whatsapp")  { loadWaStatus(); startWaQrPolling(); }
+  if (tab === "broadcast")  initBroadcast();
+  if (tab === "loyalty")    loadLoyalty();
+  if (tab === "archive")    loadArchives();
+  if (tab === "accounting") initAccounting();
+  if (tab === "whatsapp")   { loadWaStatus(); startWaQrPolling(); }
+}
+
+// ═══════════════════ Accounting / مدير الحسابات ═══════════════════
+let _accCurrentMonth = null;
+let _accSubTab = "costs";
+
+function initAccounting() {
+  populateMonthPicker();
+  loadAccountingDashboard();
+  loadProductCostsTable();
+}
+
+function populateMonthPicker() {
+  const sel = document.getElementById("accMonthPicker");
+  if (!sel || sel.dataset.populated) return;
+  const months = [];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now); d.setUTCMonth(d.getUTCMonth() - i);
+    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`;
+    months.push(ym);
+  }
+  sel.innerHTML = months.map(m => `<option value="${m}">${m}</option>`).join("");
+  sel.dataset.populated = "1";
+  _accCurrentMonth = months[0];
+
+  const yp = document.getElementById("yearPicker");
+  if (yp && !yp.dataset.populated) {
+    const years = [];
+    for (let i = 0; i < 5; i++) years.push(now.getUTCFullYear() - i);
+    yp.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join("");
+    yp.dataset.populated = "1";
+  }
+
+  const expDate = document.getElementById("expDate");
+  if (expDate) expDate.value = new Date().toISOString().slice(0, 10);
+
+  const expType = document.getElementById("expType");
+  if (expType && !expType.dataset.populated) {
+    const TYPES = {
+      rent: "إيجار", salaries: "رواتب", utilities: "كهرباء/ماء",
+      internet: "إنترنت/اتصالات", marketing: "تسويق", supplies: "مستلزمات",
+      delivery: "توصيل", refund: "مرتجعات", other: "أخرى"
+    };
+    expType.innerHTML = Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+    expType.dataset.populated = "1";
+  }
+}
+
+async function loadAccountingDashboard() {
+  try {
+    const k = await api("GET", "/store/accounting/dashboard");
+    const fmt = (n) => (n||0).toLocaleString("ar-EG", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const arrow = (n) => n === null ? "—" : (n > 0 ? `<span style='color:#16a34a'>↑ ${n}%</span>` : n < 0 ? `<span style='color:#dc2626'>↓ ${Math.abs(n)}%</span>` : `<span style='color:#6b7280'>—</span>`);
+    document.getElementById("accKpis").innerHTML = `
+      <div class="stat-card" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe);padding:16px;border-radius:12px">
+        <div style="color:#1e40af;font-size:12px;font-weight:700">الإيرادات هذا الشهر</div>
+        <div style="font-size:24px;font-weight:900;color:#1e3a8a;margin:4px 0">${fmt(k.revenue.current)} ر.س</div>
+        <div style="font-size:11px">${arrow(k.revenue.change)} مقارنة بالشهر الماضي</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#dcfce7,#bbf7d0);padding:16px;border-radius:12px">
+        <div style="color:#166534;font-size:12px;font-weight:700">صافي الربح</div>
+        <div style="font-size:24px;font-weight:900;color:#14532d;margin:4px 0">${fmt(k.netProfit.current)} ر.س</div>
+        <div style="font-size:11px">${arrow(k.netProfit.change)} مقارنة بالشهر الماضي</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#fef3c7,#fde68a);padding:16px;border-radius:12px">
+        <div style="color:#854d0e;font-size:12px;font-weight:700">هامش الربح الإجمالي</div>
+        <div style="font-size:24px;font-weight:900;color:#713f12;margin:4px 0">${(k.grossMargin.current||0).toFixed(1)}%</div>
+        <div style="font-size:11px">${k.grossMargin.change !== null ? (k.grossMargin.change > 0 ? `<span style='color:#16a34a'>↑ +${k.grossMargin.change}</span>` : `<span style='color:#dc2626'>↓ ${k.grossMargin.change}</span>`) : "—"}</div>
+      </div>
+      <div class="stat-card" style="background:linear-gradient(135deg,#f3e8ff,#e9d5ff);padding:16px;border-radius:12px">
+        <div style="color:#6b21a8;font-size:12px;font-weight:700">أكثر منتج ربحاً</div>
+        <div style="font-size:15px;font-weight:800;color:#581c87;margin:4px 0">${k.topProduct?.name || "—"}</div>
+        <div style="font-size:11px;color:#6b21a8">${k.topProduct ? `ربح: ${fmt(k.topProduct.profit)} ر.س` : ""}</div>
+      </div>
+    `;
+  } catch (e) {
+    document.getElementById("accKpis").innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#dc2626;padding:20px">تعذّر تحميل البيانات</div>`;
+  }
+}
+
+function showAccSubTab(name) {
+  _accSubTab = name;
+  ["costs","expenses","pnl","year"].forEach(n => {
+    const sec = document.getElementById("acc" + n.charAt(0).toUpperCase() + n.slice(1));
+    const btn = document.getElementById("subTab" + n.charAt(0).toUpperCase() + n.slice(1));
+    if (sec) sec.style.display = n === name ? "" : "none";
+    if (btn) btn.classList.toggle("active", n === name);
+  });
+  if (name === "costs")    loadProductCostsTable();
+  if (name === "expenses") loadExpenses();
+  if (name === "pnl")      loadPnL();
+  if (name === "year")     loadYearSummary();
+}
+
+async function loadProductCostsTable() {
+  try {
+    const r = await api("GET", "/store/accounting/product-costs");
+    const tbody = document.getElementById("accCostsTbody");
+    if (!r.products || r.products.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding:30px;text-align:center;color:#9ca3af">لا توجد منتجات بعد. أضف منتجات من tab "القائمة" أولاً.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = r.products.map(p => {
+      const marginColor = p.margin > 50 ? "#16a34a" : p.margin > 25 ? "#ca8a04" : p.margin > 0 ? "#dc2626" : "#6b7280";
+      return `<tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:10px;font-weight:600">${escapeHtml(p.name)}</td>
+        <td style="padding:10px;text-align:center;color:#1e3a8a;font-weight:700">${p.price} ر.س</td>
+        <td style="padding:10px;text-align:center">
+          <input type="number" min="0" step="0.01" value="${p.cost}" onblur="saveProductCost('${p.id}', this.value)"
+            style="width:90px;padding:5px;border:1px solid #d1d5db;border-radius:6px;text-align:center;font-size:13px">
+        </td>
+        <td style="padding:10px;text-align:center;font-weight:700;color:${marginColor}">${p.profit} ر.س</td>
+        <td style="padding:10px;text-align:center;font-weight:700;color:${marginColor}">${p.margin}%</td>
+        <td style="padding:10px;text-align:center"><button class="btn btn-outline" style="padding:4px 10px;font-size:11px" onclick="showCostHistory('${p.id}','${escapeHtml(p.name)}')">سجل</button></td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    document.getElementById("accCostsTbody").innerHTML = `<tr><td colspan="6" style="padding:30px;text-align:center;color:#dc2626">${e?.error || "خطأ"}</td></tr>`;
+  }
+}
+
+async function saveProductCost(productId, val) {
+  const cost = parseFloat(val);
+  if (!Number.isFinite(cost) || cost < 0) return showToast("التكلفة غير صحيحة", "error");
+  try {
+    await api("PUT", `/store/accounting/product-costs/${productId}`, { cost });
+    showToast("✅ تم حفظ التكلفة", "success");
+    loadProductCostsTable();
+    loadAccountingDashboard();
+  } catch (e) { showToast(e?.error || "فشل الحفظ", "error"); }
+}
+
+async function showCostHistory(productId, name) {
+  try {
+    const r = await api("GET", `/store/accounting/product-costs/${productId}/history`);
+    const lines = (r.history || []).map(h => `${h.from?.slice(0,10)} → ${h.to?.slice(0,10)}: ${h.cost} ر.س`).join("\n");
+    alert(`سجل تعديل تكلفة "${name}"\n\nالحالية: ${r.current} ر.س\n\n${lines || "(لا تعديلات سابقة)"}`);
+  } catch {}
+}
+
+async function loadExpenses() {
+  const ym = document.getElementById("accMonthPicker").value;
+  try {
+    const r = await api("GET", `/store/accounting/expenses?month=${ym}`);
+    // by type
+    const byType = {};
+    let total = 0;
+    for (const e of (r.expenses || [])) {
+      const t = e.type;
+      if (!byType[t]) byType[t] = { type: t, ar: r.types[t]?.ar || t, total: 0, count: 0 };
+      byType[t].total += e.amount;
+      byType[t].count++;
+      total += e.amount;
+    }
+    document.getElementById("accExpensesByType").innerHTML = Object.values(byType).map(b => `
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;padding:10px;border-radius:8px">
+        <div style="color:#6b7280;font-size:11px;font-weight:700">${b.ar}</div>
+        <div style="font-size:17px;font-weight:800;color:#1f2937">${b.total.toFixed(2)} ر.س</div>
+        <div style="color:#9ca3af;font-size:11px">${b.count} إدخال</div>
+      </div>
+    `).join("") + (total > 0 ? `<div style="background:#fef2f2;border:1px solid #fca5a5;padding:10px;border-radius:8px">
+        <div style="color:#991b1b;font-size:11px;font-weight:700">الإجمالي</div>
+        <div style="font-size:17px;font-weight:800;color:#7f1d1d">${total.toFixed(2)} ر.س</div>
+      </div>` : "");
+
+    // table
+    const tbody = document.getElementById("accExpensesTbody");
+    if (!r.expenses || r.expenses.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:#9ca3af">لا مصاريف هذا الشهر</td></tr>`;
+    } else {
+      tbody.innerHTML = r.expenses.sort((a,b)=>b.date.localeCompare(a.date)).map(e => `
+        <tr style="border-bottom:1px solid #f3f4f6">
+          <td style="padding:10px">${r.types[e.type]?.ar || e.type}</td>
+          <td style="padding:10px;text-align:center;font-weight:700">${e.amount.toFixed(2)} ر.س</td>
+          <td style="padding:10px;color:#6b7280">${escapeHtml(e.note || "—")}</td>
+          <td style="padding:10px;text-align:center;color:#6b7280;font-size:11px">${e.date.slice(0,10)}</td>
+          <td style="padding:10px;text-align:center"><button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:#dc2626" onclick="deleteExpense('${e.id}')">حذف</button></td>
+        </tr>
+      `).join("");
+    }
+  } catch (e) { console.warn("loadExpenses", e); }
+}
+
+function openAddExpenseModal() {
+  document.getElementById("expenseModal").style.display = "flex";
+}
+
+async function saveExpense() {
+  const type = document.getElementById("expType").value;
+  const amount = parseFloat(document.getElementById("expAmount").value);
+  const note = document.getElementById("expNote").value.trim();
+  const date = document.getElementById("expDate").value;
+  if (!Number.isFinite(amount) || amount <= 0) return showToast("أدخل مبلغاً صحيحاً", "error");
+  try {
+    await api("POST", "/store/accounting/expenses", { type, amount, note, date: date ? new Date(date).toISOString() : undefined });
+    showToast("✅ تم الحفظ", "success");
+    document.getElementById("expenseModal").style.display = "none";
+    document.getElementById("expAmount").value = "";
+    document.getElementById("expNote").value = "";
+    loadExpenses();
+    loadAccountingDashboard();
+  } catch (e) { showToast(e?.error || "فشل الحفظ", "error"); }
+}
+
+async function deleteExpense(id) {
+  if (!confirm("حذف هذا المصروف؟")) return;
+  try {
+    await api("DELETE", `/store/accounting/expenses/${id}`);
+    loadExpenses();
+    loadAccountingDashboard();
+  } catch (e) { showToast(e?.error || "فشل الحذف", "error"); }
+}
+
+async function loadPnL() {
+  const ym = document.getElementById("accMonthPicker").value;
+  document.getElementById("pnlMonthLabel").textContent = ym;
+  try {
+    const p = await api("GET", `/store/accounting/monthly/${ym}`);
+    const fmt = (n) => (n||0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const colorN = (n) => n > 0 ? "#16a34a" : n < 0 ? "#dc2626" : "#6b7280";
+    const closeBtn = document.getElementById("closeMonthBtn");
+    if (closeBtn) {
+      closeBtn.disabled = !!p.closed;
+      closeBtn.textContent = p.closed ? "🔒 مُقفل" : "🔒 تقفيل الشهر";
+    }
+    document.getElementById("accPnlContent").innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr style="background:#dbeafe"><td style="padding:10px;font-weight:700">💵 الإيرادات</td><td style="padding:10px;text-align:left;font-weight:800;color:#1e3a8a">${fmt(p.revenue)} ر.س</td></tr>
+        <tr><td style="padding:10px;color:#6b7280;padding-right:30px">— تكلفة البضاعة المباعة (COGS)</td><td style="padding:10px;text-align:left;color:#dc2626">-${fmt(p.cogs)} ر.س</td></tr>
+        <tr style="background:#dcfce7;border-top:2px solid #86efac"><td style="padding:10px;font-weight:700">📈 الربح الإجمالي</td><td style="padding:10px;text-align:left;font-weight:800;color:#14532d">${fmt(p.grossProfit)} ر.س (${p.grossMargin.toFixed(1)}%)</td></tr>
+        <tr><td style="padding:10px;color:#6b7280;padding-right:30px">— مصاريف ثابتة</td><td style="padding:10px;text-align:left;color:#dc2626">-${fmt(p.fixedExpenses)} ر.س</td></tr>
+        <tr><td style="padding:10px;color:#6b7280;padding-right:30px">— مصاريف متغيرة</td><td style="padding:10px;text-align:left;color:#dc2626">-${fmt(p.variableExpenses)} ر.س</td></tr>
+        <tr style="background:#${p.netProfit >= 0 ? 'dcfce7' : 'fee2e2'};border-top:2px solid ${p.netProfit >= 0 ? '#86efac' : '#fca5a5'}">
+          <td style="padding:12px;font-weight:800;font-size:15px">💰 صافي الربح</td>
+          <td style="padding:12px;text-align:left;font-weight:900;font-size:16px;color:${colorN(p.netProfit)}">${fmt(p.netProfit)} ر.س (${p.netMargin.toFixed(1)}%)</td>
+        </tr>
+        <tr><td style="padding:8px;color:#6b7280;font-size:12px">VAT 15% المُحصَّل (يُرفع للهيئة)</td><td style="padding:8px;text-align:left;color:#6b7280;font-size:12px">${fmt(p.vatOutput)} ر.س</td></tr>
+      </table>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px">
+        <div style="background:#f9fafb;padding:10px;border-radius:8px"><div style="color:#6b7280;font-size:11px">عدد الطلبات</div><div style="font-weight:800;font-size:18px">${p.ordersCount}</div></div>
+        <div style="background:#f9fafb;padding:10px;border-radius:8px"><div style="color:#6b7280;font-size:11px">المكتملة</div><div style="font-weight:800;font-size:18px">${p.completedCount}</div></div>
+        <div style="background:#f9fafb;padding:10px;border-radius:8px"><div style="color:#6b7280;font-size:11px">عملاء فريدون</div><div style="font-weight:800;font-size:18px">${p.uniqueCustomers}</div></div>
+        <div style="background:#f9fafb;padding:10px;border-radius:8px"><div style="color:#6b7280;font-size:11px">متوسط الطلب</div><div style="font-weight:800;font-size:18px">${fmt(p.avgOrderValue)}</div></div>
+      </div>
+      ${(p.topProducts || []).length ? `
+      <h4 style="font-weight:800;margin:18px 0 8px;font-size:14px">🏆 الأكثر ربحية</h4>
+      <ol style="padding-right:20px;font-size:13px;line-height:2">
+        ${p.topProducts.slice(0,5).map((tp,i)=>`<li><b>${escapeHtml(tp.name)}</b> — ربح ${fmt(tp.profit)} ر.س من ${tp.qty} وحدة</li>`).join("")}
+      </ol>` : ""}
+    `;
+  } catch (e) {
+    document.getElementById("accPnlContent").innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">${e?.error || "خطأ"}</div>`;
+  }
+}
+
+async function closeAccountingMonth() {
+  const ym = document.getElementById("accMonthPicker").value;
+  if (!confirm(`تقفيل ${ym}؟\n\nبعد التقفيل لن تستطيع تعديل بيانات هذا الشهر (تكاليف، مصاريف، طلبات).`)) return;
+  try {
+    await api("POST", `/store/accounting/monthly/${ym}/close`);
+    showToast("🔒 تم التقفيل بنجاح", "success");
+    loadPnL();
+  } catch (e) { showToast(e?.error || "فشل التقفيل", "error"); }
+}
+
+async function loadAccountingMonth() {
+  _accCurrentMonth = document.getElementById("accMonthPicker").value;
+  if (_accSubTab === "expenses") loadExpenses();
+  if (_accSubTab === "pnl") loadPnL();
+}
+
+async function loadYearSummary() {
+  const year = document.getElementById("yearPicker").value;
+  try {
+    const y = await api("GET", `/store/accounting/yearly/${year}`);
+    const fmt = (n) => (n||0).toLocaleString("ar-EG", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    document.getElementById("accYearContent").innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">
+        <div style="background:#dbeafe;padding:14px;border-radius:10px"><div style="font-size:12px;color:#1e40af;font-weight:700">إيرادات السنة</div><div style="font-size:22px;font-weight:900;color:#1e3a8a">${fmt(y.revenue)} ر.س</div></div>
+        <div style="background:#dcfce7;padding:14px;border-radius:10px"><div style="font-size:12px;color:#166534;font-weight:700">صافي الربح</div><div style="font-size:22px;font-weight:900;color:#14532d">${fmt(y.netProfit)} ر.س</div></div>
+        <div style="background:#fef3c7;padding:14px;border-radius:10px"><div style="font-size:12px;color:#854d0e;font-weight:700">هامش الربح</div><div style="font-size:22px;font-weight:900;color:#713f12">${y.netMargin.toFixed(1)}%</div></div>
+        <div style="background:#fee2e2;padding:14px;border-radius:10px"><div style="font-size:12px;color:#991b1b;font-weight:700">VAT للسنة</div><div style="font-size:22px;font-weight:900;color:#7f1d1d">${fmt(y.vatOutput)} ر.س</div></div>
+      </div>
+      <div style="font-size:13px;color:#6b7280;margin-bottom:10px">الأشهر المُقفلة: <b style="color:#166534">${y.monthsClosedCount}/12</b></div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:10px">
+        <thead><tr style="background:#f3f4f6"><th style="padding:8px;text-align:right">الشهر</th><th style="padding:8px;text-align:center">إيرادات</th><th style="padding:8px;text-align:center">صافي ربح</th><th style="padding:8px;text-align:center">طلبات</th><th style="padding:8px;text-align:center">الحالة</th></tr></thead>
+        <tbody>${y.months.map(m=>`<tr style="border-bottom:1px solid #f3f4f6"><td style="padding:8px">${m.month}</td><td style="padding:8px;text-align:center">${fmt(m.revenue)}</td><td style="padding:8px;text-align:center;color:${m.netProfit>=0?'#16a34a':'#dc2626'}">${fmt(m.netProfit)}</td><td style="padding:8px;text-align:center">${m.ordersCount}</td><td style="padding:8px;text-align:center">${m.closed ? "🔒" : "📂"}</td></tr>`).join("")}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    document.getElementById("accYearContent").innerHTML = `<div style="text-align:center;color:#dc2626;padding:20px">${e?.error || "خطأ"}</div>`;
+  }
+}
+
+async function closeAccountingYear() {
+  const year = document.getElementById("yearPicker").value;
+  if (!confirm(`تقفيل سنة ${year}؟\n\nيجب تقفيل كل أشهر السنة أولاً.`)) return;
+  try {
+    await api("POST", `/store/accounting/yearly/${year}/close`);
+    showToast("🔒 تم تقفيل السنة بنجاح", "success");
+    loadYearSummary();
+  } catch (e) { showToast(e?.error || "فشل التقفيل", "error"); }
+}
+
+async function loadAIAdvice() {
+  const ym = document.getElementById("accMonthPicker").value;
+  const btn = document.getElementById("aiAdviceBtn");
+  const res = document.getElementById("aiAdviceResult");
+  btn.disabled = true;
+  btn.textContent = "🤖 جاري التحليل...";
+  res.innerHTML = `<div style="text-align:center;padding:14px;color:#16a34a">🧠 المحاسب يحلّل بياناتك...</div>`;
+  try {
+    const a = await api("POST", "/store/accounting/ai-advice", { yearMonth: ym });
+    const scoreColor = a.healthScore >= 75 ? "#16a34a" : a.healthScore >= 50 ? "#ca8a04" : "#dc2626";
+    res.innerHTML = `
+      <div style="background:#fff;padding:14px;border-radius:10px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>${escapeHtml(a.summary || "")}</strong>
+          <span style="background:${scoreColor};color:#fff;padding:6px 14px;border-radius:20px;font-weight:800">${a.healthScore}/100</span>
+        </div>
+      </div>
+      ${(a.warnings || []).length ? `<div style="background:#fee2e2;border:1px solid #fca5a5;padding:10px 14px;border-radius:8px;margin-bottom:10px"><b>⚠️ تحذيرات:</b><ul style="margin:6px 0 0 18px;padding:0">${a.warnings.map(w=>`<li>${escapeHtml(w)}</li>`).join("")}</ul></div>` : ""}
+      ${(a.kudos || []).length ? `<div style="background:#dcfce7;border:1px solid #86efac;padding:10px 14px;border-radius:8px;margin-bottom:10px"><b>🎉 إيجابيات:</b><ul style="margin:6px 0 0 18px;padding:0">${a.kudos.map(k=>`<li>${escapeHtml(k)}</li>`).join("")}</ul></div>` : ""}
+      ${(a.advice || []).map(ad => {
+        const pColor = ad.priority === "high" ? "#dc2626" : ad.priority === "medium" ? "#ca8a04" : "#1e40af";
+        return `<div style="background:#fff;border-right:4px solid ${pColor};padding:10px 14px;border-radius:8px;margin-bottom:8px"><b>${escapeHtml(ad.title)}</b><div style="color:#374151;margin-top:4px">${escapeHtml(ad.detail)}</div></div>`;
+      }).join("")}
+    `;
+  } catch (e) { res.innerHTML = `<div style="color:#dc2626;padding:14px">تعذّر الحصول على نصيحة الآن</div>`; }
+  finally {
+    btn.disabled = false;
+    btn.textContent = "✨ احصل على نصيحة";
+  }
+}
+
+function escapeHtml(s) {
+  return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+// ─── AI Video Recommendation ───────────────────────────────────
+async function getAIVideoRecommendation() {
+  const id = document.getElementById("pm_id").value;
+  if (!id) return showToast("احفظ المنتج أولاً ثم اطلب التوصية", "info");
+  const box = document.getElementById("pm_videoAIRec");
+  box.style.display = "";
+  box.innerHTML = `<div style="color:#16a34a">🧠 جاري توليد التوصية...</div>`;
+  try {
+    const r = await api("POST", `/store/products/${id}/video-recommend`);
+    box.innerHTML = `
+      <div><b>📹 نوع الفيديو الموصى به:</b> <span style="color:#15803d;font-weight:800">${escapeHtml(r.videoTypeAr || r.videoType)}</span></div>
+      <div><b>⏱️ المدة المثلى:</b> ${escapeHtml(r.duration || "")}</div>
+      <div style="margin-top:6px"><b>📝 قالب نص العرض:</b><br><i style="color:#374151">${escapeHtml(r.scriptTemplate || "")}</i></div>
+      ${(r.tips||[]).length ? `<div style="margin-top:6px"><b>💡 نصائح:</b><ul style="margin:4px 0 0 18px;padding:0">${r.tips.map(t=>`<li>${escapeHtml(t)}</li>`).join("")}</ul></div>` : ""}
+    `;
+  } catch (e) { box.innerHTML = `<div style="color:#dc2626">تعذّر الحصول على التوصية</div>`; }
 }
 
 // ─── Archive (شهري) ──────────────────────────────────────────
@@ -2203,6 +2703,9 @@ function openProductModal(id = null) {
   document.getElementById("pm_desc").value        = p?.description || "";
   document.getElementById("pm_curImageUrl").value = p?.imageUrl || "";
   document.getElementById("pm_available").value   = String(p?.available ?? true);
+  document.getElementById("pm_videoUrl").value    = p?.videoUrl || "";
+  document.getElementById("pm_videoCaption").value = p?.videoCaption || "";
+  document.getElementById("pm_videoAIRec").style.display = "none";
 
   // Category select
   const sel = document.getElementById("pm_category");
@@ -2402,6 +2905,8 @@ async function saveProduct() {
     category:      document.getElementById("pm_category").value,
     subCategoryId: document.getElementById("pm_subCategoryId").value.trim(),
     imageUrl,
+    videoUrl:      document.getElementById("pm_videoUrl").value.trim() || null,
+    videoCaption:  document.getElementById("pm_videoCaption").value.trim() || "",
     available:     document.getElementById("pm_available").value === "true",
     sizes:         collectSizes(),
     stock:         readStockValue(),

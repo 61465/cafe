@@ -74,14 +74,15 @@ app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      "default-src":  ["'self'"],
-      "script-src":   ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://www.gstatic.com"],
-      "style-src":    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      "img-src":      ["'self'", "data:", "blob:", "https:"],
-      "font-src":     ["'self'", "data:", "https://fonts.gstatic.com"],
-      "connect-src":  ["'self'", "https:", "wss:"],
-      "frame-src":    ["'self'"],
-      "object-src":   ["'none'"],
+      "default-src":      ["'self'"],
+      "script-src":       ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://www.gstatic.com", "https://api.qrserver.com"],
+      "script-src-attr":  ["'unsafe-inline'"],
+      "style-src":        ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "img-src":          ["'self'", "data:", "blob:", "https:"],
+      "font-src":         ["'self'", "data:", "https://fonts.gstatic.com"],
+      "connect-src":      ["'self'", "https:", "wss:"],
+      "frame-src":        ["'self'"],
+      "object-src":       ["'none'"],
     },
   },
   hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
@@ -4132,6 +4133,7 @@ if (require.main === module) {
       dailyReport.start();
       orderScheduler.start();
       require("./monthly-archive").startMonthlyCron();
+      require("./accounting").startMonthlyAccountingCron();
     });
   });
 }
