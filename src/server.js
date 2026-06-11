@@ -79,9 +79,10 @@ app.use(helmet({
       "script-src-attr":  ["'unsafe-inline'"],
       "style-src":        ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       "img-src":          ["'self'", "data:", "blob:", "https:"],
+      "media-src":        ["'self'", "blob:", "https:"],
       "font-src":         ["'self'", "data:", "https://fonts.gstatic.com"],
       "connect-src":      ["'self'", "https:", "wss:"],
-      "frame-src":        ["'self'"],
+      "frame-src":        ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com", "https://drive.google.com"],
       "object-src":       ["'none'"],
     },
   },
@@ -3165,13 +3166,39 @@ app.get(["/order/:token", "/o/:token", "/:token([a-zA-Z0-9]{4,12})"], (req, res)
   const products = (store.products || []).filter(isProductInStock);
   const cats     = (store.categories || []).filter(cat => products.some(p => p.category === cat.id));
 
+  const _absUrl = (u) => {
+    if (!u) return null;
+    return u.startsWith("http") ? u : `${(process.env.PUBLIC_URL||"").replace(/\/$/,"")}${u}`;
+  };
+  // YouTube/Vimeo → embed URL لـ <iframe>
+  const _videoEmbed = (url) => {
+    if (!url) return null;
+    // YouTube watch / youtu.be / shorts
+    const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_\-]{11})/);
+    if (yt) return { kind: "iframe", src: `https://www.youtube.com/embed/${yt[1]}?rel=0&playsinline=1`, original: url };
+    // Vimeo
+    const vm = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    if (vm) return { kind: "iframe", src: `https://player.vimeo.com/video/${vm[1]}`, original: url };
+    // Google Drive (preview)
+    const gd = url.match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_\-]+)/);
+    if (gd) return { kind: "iframe", src: `https://drive.google.com/file/d/${gd[1]}/preview`, original: url };
+    // direct mp4/webm/mov OR uploaded internal /store-videos/...
+    if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || url.startsWith("/store-videos/")) {
+      return { kind: "native", src: _absUrl(url), original: url };
+    }
+    // fallback: just open in new tab
+    return { kind: "link", src: url, original: url };
+  };
+
   const productData = {};
   products.forEach(p => {
     productData[String(p.id)] = {
       name:           p.name,
       description:    p.description || "",
       price:          Number(p.price) || 0,
-      imageUrl:       p.imageUrl ? (p.imageUrl.startsWith("http") ? p.imageUrl : `${(process.env.PUBLIC_URL||"").replace(/\/$/,"")}${p.imageUrl}`) : null,
+      imageUrl:       _absUrl(p.imageUrl),
+      video:          _videoEmbed(p.videoUrl),
+      videoCaption:   p.videoCaption || "",
       categoryId:     String(p.category || ""),
       subCategoryId:  String(p.subCategoryId || ""),
       sizes:          Array.isArray(p.sizes) && p.sizes.length
@@ -3386,6 +3413,16 @@ body{display:flex;flex-direction:column;padding-bottom:96px;min-width:320px}
 .c-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
 .card:hover .c-img img{transform:scale(1.04)}
 .no-img{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:42px;color:var(--border-dim)}
+.c-vid-badge{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.78);color:#fff;border:none;padding:6px 12px;border-radius:20px;font-size:12px;font-weight:800;cursor:pointer;z-index:3;display:flex;align-items:center;gap:4px;backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,.4);transition:.2s}
+.c-vid-badge:hover{background:#dc2626;transform:scale(1.05)}
+.video-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:none;align-items:center;justify-content:center;padding:14px}
+.video-modal-bg.show{display:flex}
+.video-modal{position:relative;width:100%;max-width:780px;background:#000;border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.video-modal-close{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.18);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:18px;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.video-modal-close:hover{background:rgba(255,255,255,.32)}
+.video-modal-body{position:relative;width:100%;aspect-ratio:16/9;background:#000}
+.video-modal-body iframe,.video-modal-body video{width:100%;height:100%;border:none;display:block;background:#000}
+.video-modal-caption{padding:12px 16px;color:#f5f5f5;font-size:13px;background:#0a0a0a;text-align:center}
 .c-body{padding:13px 13px 14px;display:flex;flex-direction:column;gap:4px;flex:1}
 .c-name{font-size:15px;font-weight:800;color:#f5f5f5;line-height:1.3;letter-spacing:-.1px}
 .c-desc{font-size:12px;color:#6a6a6a;line-height:1.5;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -3747,6 +3784,19 @@ CATS.forEach(function(cat, ci) {
     } else {
       imgDiv.innerHTML = '<div class="no-img">🍽️</div>';
     }
+    // 🎬 Video badge — يفتح modal للمشاهدة
+    if (p.video && p.video.src) {
+      var vidBadge = document.createElement('button');
+      vidBadge.className = 'c-vid-badge';
+      vidBadge.type = 'button';
+      vidBadge.innerHTML = '▶ فيديو';
+      vidBadge.title = 'شاهد الفيديو';
+      vidBadge.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        openVideoModal(p.video, p.name, p.videoCaption || '');
+      });
+      imgDiv.appendChild(vidBadge);
+    }
 
     // Body
     var body = document.createElement('div');
@@ -3896,6 +3946,56 @@ try { (function() {
   renderSubChips();
   applyFilter();
 })(); } catch(_tabsErr) { console.error('tabs init error:', _tabsErr); }
+
+// ── 🎬 Video modal ──
+function openVideoModal(video, productName, caption) {
+  var bg = document.getElementById('videoModalBg');
+  if (!bg) {
+    bg = document.createElement('div');
+    bg.id = 'videoModalBg';
+    bg.className = 'video-modal-bg';
+    bg.innerHTML = '<div class="video-modal"><button class="video-modal-close" type="button" aria-label="إغلاق">✕</button><div class="video-modal-body" id="videoModalBody"></div><div class="video-modal-caption" id="videoModalCaption"></div></div>';
+    document.body.appendChild(bg);
+    bg.addEventListener('click', function(e){ if (e.target === bg) closeVideoModal(); });
+    bg.querySelector('.video-modal-close').addEventListener('click', closeVideoModal);
+  }
+  var body = document.getElementById('videoModalBody');
+  var capEl = document.getElementById('videoModalCaption');
+  body.innerHTML = '';
+  if (video.kind === 'iframe') {
+    var iframe = document.createElement('iframe');
+    iframe.src = video.src;
+    iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+    iframe.setAttribute('allowfullscreen', '');
+    iframe.setAttribute('loading', 'lazy');
+    body.appendChild(iframe);
+  } else if (video.kind === 'native') {
+    var vid = document.createElement('video');
+    vid.src = video.src;
+    vid.controls = true;
+    vid.autoplay = true;
+    vid.playsInline = true;
+    body.appendChild(vid);
+  } else {
+    // link fallback — open in new tab
+    window.open(video.original || video.src, '_blank', 'noopener');
+    return;
+  }
+  var capText = (productName ? productName : '') + (caption ? ' — ' + caption : '');
+  capEl.textContent = capText.trim();
+  capEl.style.display = capText.trim() ? '' : 'none';
+  bg.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeVideoModal() {
+  var bg = document.getElementById('videoModalBg');
+  if (!bg) return;
+  bg.classList.remove('show');
+  var body = document.getElementById('videoModalBody');
+  if (body) body.innerHTML = ''; // stop playback
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeVideoModal(); });
 
 // ── Sync cart bar ──
 function sync() {
