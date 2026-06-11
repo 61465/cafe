@@ -34,6 +34,7 @@ const firestoreAuth                                = require("./firestore-auth")
 const { addPoints, redeemPoints, getPoints, pointsMessage } = require("./loyalty");
 const { validateCoupon, useCoupon }               = require("./coupons");
 const { saveRating, ratingRequestMessage, isRatingInput }   = require("./ratings");
+const aiParser                                              = require("./ai-parser");
 const sessionWatchdog = require("./session-watchdog");
 const dailyReport     = require("./daily-report");
 const orderScheduler  = require("./order-scheduler");
@@ -55,6 +56,7 @@ app.use((req, res, next) => {
     "https://botwats-fae4e.firebaseapp.com",
     "https://nakheelbot.web.app",
     "https://nakheelbot.firebaseapp.com",
+    "https://61465.github.io",
     "http://localhost:3000",
   ];
   const origin = req.headers.origin;
@@ -69,8 +71,22 @@ app.use((req, res, next) => {
 });
 
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src":  ["'self'"],
+      "script-src":   ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://www.gstatic.com"],
+      "style-src":    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "img-src":      ["'self'", "data:", "blob:", "https:"],
+      "font-src":     ["'self'", "data:", "https://fonts.gstatic.com"],
+      "connect-src":  ["'self'", "https:", "wss:"],
+      "frame-src":    ["'self'"],
+      "object-src":   ["'none'"],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
   crossOriginResourcePolicy: { policy: "cross-origin" },
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
 }));
 
 const apiLimiter = rateLimit({
@@ -124,7 +140,8 @@ app.get("/health", (req, res) => {
   }
   res.json({ ok: true });
 });
-app.get("/", (_req, res) => res.redirect("/platform.html"));
+// الـ landing الرسمي على GitHub Pages — نوجّه إليه لتجنب صفحات تسجيل متعددة
+app.get("/", (_req, res) => res.redirect(301, "https://61465.github.io/cafe/docs/"));
 
 // ─── Public APIs ──────────────────────────────────────────────────────────────
 app.get("/api/plans", (_req, res) => {
@@ -196,8 +213,8 @@ app.post("/api/sim", async (req, res) => {
   const buffer = [];
   try {
     await demoCtx.run({ buffer }, async () => {
-      // Use first active store config for demo
-      const store = getStoreById("nakheel_001") || getAllStores()[0] || null;
+      // Use first active store that has products, fallback to any store
+      const store = getAllStores().find(s => s.products?.length > 0) || getAllStores()[0] || null;
       await storeCtx.run({ storeId: "demo", store }, async () => {
         await handleMessage(String(from), String(message));
       });
@@ -225,11 +242,314 @@ app.get("/orders", (req, res) => {
   res.json({ orders: readOrders(parseInt(req.query.limit) || 50) });
 });
 
+// ─── Public Try Slot endpoints (for /try.html visitors, no auth) ────────────
+const TRY_SLOTS = ["try_1", "try_2", "try_3", "try_4", "try_5"];
+const tryInitTimes = new Map(); // ip → [timestamps]
+
+app.post("/try/init", async (req, res) => {
+  const ip  = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || "unknown";
+  const now = Date.now();
+  const times = (tryInitTimes.get(ip) || []).filter(t => now - t < 3600_000);
+  if (times.length >= 20) {
+    return res.status(429).json({ error: "تجاوزت الحد المسموح، حاول لاحقاً" });
+  }
+  times.push(now);
+  tryInitTimes.set(ip, times);
+
+  for (const slotId of TRY_SLOTS) {
+    const { status } = waMgr.getStatus(slotId);
+    if (status === "open") continue; // مستخدم حالياً
+    try {
+      await waMgr.resetSession(slotId);
+      return res.json({ ok: true, slotId });
+    } catch (e) {
+      console.warn(`/try/init [${slotId}] failed:`, e.message);
+    }
+  }
+  return res.status(503).json({ error: "جميع فتحات التجربة مشغولة، حاول بعد دقيقة" });
+});
+
+app.get("/try/status/:slotId", (req, res) => {
+  const { slotId } = req.params;
+  if (!TRY_SLOTS.includes(slotId)) return res.status(400).json({ error: "invalid slot" });
+  res.json(waMgr.getStatus(slotId));
+});
+
+// ─── Try Page: ربط البوت الفعلي بـ QR للتجربة ────────────────────────────────
+app.get("/try.html", (_req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#050505">
+<title>تجربة البوت — اربط رقمك</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%;background:#050505;font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#eee;overflow-x:hidden}
+.wrap{max-width:480px;margin:0 auto;padding:24px 18px;min-height:100vh;display:flex;flex-direction:column}
+.hdr{text-align:center;padding:8px 0 22px}
+.hdr h1{font-size:22px;font-weight:800;color:#D4AF37;letter-spacing:.3px}
+.hdr p{font-size:13px;color:#888;margin-top:6px;line-height:1.6}
+
+.card{background:#0e0e0e;border:1px solid #1e1e1e;border-radius:18px;padding:24px 20px;margin-bottom:14px}
+
+.qr-box{background:#fff;border-radius:14px;padding:18px;display:flex;align-items:center;justify-content:center;min-height:280px;position:relative}
+#qrContainer{display:flex;align-items:center;justify-content:center}
+#qrContainer img,#qrContainer canvas{display:block;width:100%;max-width:240px;height:auto}
+
+.spinner{width:48px;height:48px;border:4px solid #1e1e1e;border-top-color:#D4AF37;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.steps{margin-top:18px;padding:16px;background:#121212;border-radius:12px;border:1px solid #1a1a1a}
+.steps h3{font-size:13px;font-weight:800;color:#D4AF37;margin-bottom:10px;letter-spacing:.5px}
+.steps ol{padding-right:18px;color:#aaa;font-size:13px;line-height:1.9}
+.steps ol li::marker{color:#D4AF37;font-weight:800}
+
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:14px;font-size:12px;font-weight:700;background:#121212;border:1px solid #1e1e1e;color:#888}
+.status-pill .dot{width:7px;height:7px;border-radius:50%;background:#666}
+.status-pill.qr{color:#D4AF37}.status-pill.qr .dot{background:#D4AF37;animation:pulse 1.5s ease-in-out infinite}
+.status-pill.open{color:#22c55e}.status-pill.open .dot{background:#22c55e}
+.status-pill.error{color:#ef4444}.status-pill.error .dot{background:#ef4444}
+@keyframes pulse{50%{opacity:.4}}
+
+.btn{display:inline-block;background:#D4AF37;color:#000;border:none;padding:12px 24px;border-radius:22px;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;text-align:center}
+.btn:active{opacity:.85}
+.btn.ghost{background:transparent;border:1.5px solid #333;color:#888}
+
+.success{display:none;text-align:center;padding:30px 20px}
+.success .check{font-size:80px;color:#22c55e;margin-bottom:14px;filter:drop-shadow(0 0 16px rgba(34,197,94,.4))}
+.success h2{font-size:22px;color:#22c55e;font-weight:800;margin-bottom:10px}
+.success p{color:#aaa;font-size:14px;line-height:1.8;margin-bottom:8px}
+.success .phone{display:inline-block;background:#121212;border:1px solid #2a2a2a;padding:8px 14px;border-radius:10px;color:#D4AF37;font-weight:700;font-size:15px;direction:ltr;margin:10px 0}
+.actions{display:flex;gap:10px;margin-top:18px;justify-content:center;flex-wrap:wrap}
+
+.error-box{display:none;background:#1a0a0a;border:1px solid #3a1a1a;color:#f87171;padding:14px;border-radius:12px;font-size:13px;text-align:center;margin-top:14px}
+
+.footer-note{margin-top:auto;padding-top:20px;text-align:center;color:#444;font-size:11px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <h1>🤖 جرّب البوت برقمك</h1>
+    <p>اربط واتساب الخاص بك مؤقتاً (45 دقيقة) لتجربة البوت الحقيقي.<br>لن نحفظ أي بيانات بعد انتهاء التجربة.</p>
+  </div>
+
+  <div class="card">
+    <div style="text-align:center;margin-bottom:14px">
+      <span id="statusPill" class="status-pill"><span class="dot"></span><span id="statusTxt">جاري التحضير…</span></span>
+    </div>
+
+    <div class="qr-box" id="qrBox">
+      <div class="spinner" id="spinner"></div>
+      <div id="qrContainer" style="display:none"></div>
+    </div>
+
+    <div class="steps">
+      <h3>خطوات الربط</h3>
+      <ol>
+        <li>افتح واتساب على هاتفك</li>
+        <li>اذهب إلى الإعدادات → الأجهزة المرتبطة</li>
+        <li>اضغط <b>ربط جهاز</b> وامسح الكود أعلاه</li>
+      </ol>
+    </div>
+
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+  <div class="card success" id="successBox">
+    <div class="check">✅</div>
+    <h2>تم الربط بنجاح!</h2>
+    <p>رقم البوت المتصل:</p>
+    <div class="phone" id="botPhone">—</div>
+    <p>افتح واتساب وأرسل أي رسالة من <b>رقم آخر</b> لرقم البوت لتبدأ التجربة.</p>
+    <div class="actions">
+      <a class="btn ghost" id="restartBtn" href="#" onclick="event.preventDefault();restart()">🔄 ربط جلسة جديدة</a>
+    </div>
+  </div>
+
+  <div class="footer-note">⏱ كل جلسة تجريبية تنتهي تلقائياً بعد 45 دقيقة</div>
+</div>
+
+<script>
+var slotId = null;
+var pollTimer = null;
+var lastQr = null;
+var qrInstance = null;
+
+var pill   = document.getElementById('statusPill');
+var pillTxt= document.getElementById('statusTxt');
+var spinner= document.getElementById('spinner');
+var qrCt   = document.getElementById('qrContainer');
+var qrBox  = document.getElementById('qrBox');
+var errBox = document.getElementById('errorBox');
+var successBox = document.getElementById('successBox');
+var card   = document.querySelector('.card');
+
+function setStatus(cls, txt) {
+  pill.className = 'status-pill ' + cls;
+  pillTxt.textContent = txt;
+}
+
+function showError(msg) {
+  errBox.style.display = 'block';
+  errBox.textContent = msg;
+  setStatus('error', 'حدث خطأ');
+}
+
+function clearError() {
+  errBox.style.display = 'none';
+  errBox.textContent = '';
+}
+
+function renderQR(text) {
+  if (text === lastQr) return;
+  lastQr = text;
+  qrCt.innerHTML = '';
+  spinner.style.display = 'none';
+  qrCt.style.display = 'flex';
+  try {
+    qrInstance = new QRCode(qrCt, {
+      text: text,
+      width: 240,
+      height: 240,
+      correctLevel: QRCode.CorrectLevel.M,
+      colorDark: '#000',
+      colorLight: '#fff'
+    });
+  } catch(e) { console.error('QR render:', e); }
+}
+
+function showSuccess(phone) {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  card.style.display = 'none';
+  successBox.style.display = 'block';
+  document.getElementById('botPhone').textContent = phone ? '+' + phone : '—';
+}
+
+async function init() {
+  clearError();
+  setStatus('', 'جاري التحضير…');
+  spinner.style.display = 'block';
+  qrCt.style.display = 'none';
+  lastQr = null;
+
+  try {
+    var r = await fetch('/try/init', { method: 'POST' });
+    var d = await r.json();
+    if (!r.ok || !d.slotId) {
+      showError(d.error || 'فشل بدء الجلسة');
+      return;
+    }
+    slotId = d.slotId;
+    pollStatus();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(pollStatus, 2500);
+  } catch(e) {
+    showError('تعذر الاتصال بالخادم');
+  }
+}
+
+async function pollStatus() {
+  if (!slotId) return;
+  try {
+    var r = await fetch('/try/status/' + slotId);
+    var d = await r.json();
+    if (d.status === 'open') {
+      setStatus('open', 'متصل ✓');
+      showSuccess(d.phone);
+      return;
+    }
+    if (d.qr) {
+      setStatus('qr', 'امسح الكود الآن');
+      renderQR(d.qr);
+      return;
+    }
+    if (d.status === 'connecting') {
+      setStatus('', 'جاري الاتصال…');
+      return;
+    }
+    if (d.status === 'disconnected') {
+      setStatus('error', 'تم القطع — أعد المحاولة');
+      return;
+    }
+    setStatus('', d.status || '…');
+  } catch(e) {
+    /* تجاهل أخطاء polling مؤقتة */
+  }
+}
+
+function restart() {
+  successBox.style.display = 'none';
+  card.style.display = 'block';
+  slotId = null;
+  init();
+}
+
+init();
+</script>
+</body>
+</html>`);
+});
+
+// ─── One-shot action trigger ──────────────────────────────────────────────────
+// Customer taps a link from the bot message → bot processes the button press
+app.get("/do/:token", async (req, res) => {
+  const sess = waMgr.getActionSession(req.params.token);
+
+  if (!sess) {
+    return res.send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{margin:0;padding:0}body{display:flex;align-items:center;justify-content:center;height:100vh;font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#f8f9fa;direction:rtl}.w{text-align:center;padding:20px}.i{font-size:52px;margin-bottom:12px}.p{color:#888;font-size:14px;line-height:1.7}</style>
+</head><body><div class="w"><div class="i">⏰</div><div class="p">انتهت صلاحية هذا الرابط<br>أرسل أي رسالة للبوت للمتابعة</div></div></body></html>`);
+  }
+
+  // Consume immediately — one-shot
+  waMgr.clearActionSession(req.params.token);
+  const { storeId, from, buttonId } = sess;
+
+  // Respond instantly with auto-close screen
+  res.send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{display:flex;align-items:center;justify-content:center;height:100vh;background:#fff;font-family:'Segoe UI',Tahoma,Arial,sans-serif;direction:rtl}
+.w{text-align:center;animation:fi .3s ease}
+@keyframes fi{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+.i{font-size:64px;margin-bottom:14px}
+.p{color:#666;font-size:15px;line-height:1.8}
+</style>
+<script>setTimeout(function(){try{history.back();}catch(e){}try{window.close();}catch(e){}},800);</script>
+</head><body>
+<div class="w"><div class="i">✅</div><div class="p">تم!<br>سيصلك الرد على واتساب</div></div>
+</body></html>`);
+
+  // Process the action in background after response is flushed
+  setImmediate(async () => {
+    try {
+      if (storeId === "owner_try" || /^try_\d+$/.test(storeId)) {
+        const stores    = getAllStores().filter(s => s.active && s.subscriptionStatus === "active");
+        const demoStore = stores.find(s => (s.products || []).length > 0) || stores[0] || null;
+        await storeCtx.run({ storeId, store: demoStore }, () => handleMessage(from, buttonId));
+      } else {
+        const store = getStoreById(storeId);
+        if (!store) return;
+        await storeCtx.run({ storeId, store }, () => handleMessage(from, buttonId));
+      }
+    } catch (e) {
+      console.error(`[do] ${storeId}→${from} ${buttonId}:`, e.message);
+    }
+  });
+});
+
 // ─── Preview Invoice ──────────────────────────────────────────────────────────
 app.get("/preview-invoice", async (req, res) => {
   try {
     const store    = getAllStores()[0] || {};
-    const products = (store.products || []).filter(p => p.available !== false).slice(0, 4);
+    const products = (store.products || []).filter(isProductInStock).slice(0, 4);
     const items    = products.length > 0
       ? products.map(p => ({ id: p.id, name: p.name, price: p.price, qty: 1, imageUrl: p.imageUrl||null }))
       : [
@@ -318,6 +638,15 @@ function getStoreById(storeId) {
   return getAllStores().find(s => s.id === storeId) || null;
 }
 
+// try_1..5 / owner_try = demo slots — resolve to first active store with products
+function resolveStore(storeId) {
+  if (/^try_\d+$/.test(storeId) || storeId === "owner_try") {
+    const active = getAllStores().filter(s => s.active && s.subscriptionStatus === "active");
+    return active.find(s => (s.products || []).length > 0) || active[0] || null;
+  }
+  return getStoreById(storeId);
+}
+
 // ─── Working Hours ────────────────────────────────────────────────────────────
 function isStoreOpen(store) {
   const hStart = store?.workingHoursStart ?? hourStart;
@@ -345,9 +674,9 @@ function getBusinessType(store) {
 function businessLabels(btype) {
   switch (btype) {
     case "pickup":      return { needsLocation: false, feeLabel: null,            timeLabel: "الاستلام",  locationPrompt: null };
-    case "homeService": return { needsLocation: true,  feeLabel: "رسوم الخدمة",   timeLabel: "الخدمة",    locationPrompt: "اكتب عنوانك للخدمة" };
+    case "homeService": return { needsLocation: true,  feeLabel: "رسوم الخدمة",   timeLabel: "الخدمة",    locationPrompt: "أرسل موقعك للخدمة" };
     case "walkin":      return { needsLocation: false, feeLabel: null,            timeLabel: "الموعد",    locationPrompt: null };
-    default:            return { needsLocation: true,  feeLabel: "رسوم التوصيل",  timeLabel: "التوصيل",   locationPrompt: "اكتب عنوانك أو مكان الاستلام" };
+    default:            return { needsLocation: true,  feeLabel: "رسوم التوصيل",  timeLabel: "التوصيل",   locationPrompt: "أرسل موقعك للتوصيل" };
   }
 }
 
@@ -366,6 +695,151 @@ function isDuplicate(id) {
     for (const [k, ts] of _seenMsgIds) if (ts < cutoff) _seenMsgIds.delete(k);
   }
   return false;
+}
+
+// ─── Input Validation: كشف الرسائل العشوائية والأسئلة الخارجية ────────────────
+
+// كشف الكلام العشوائي/spam (gibberish)
+function isGibberish(text) {
+  const s = String(text || "").trim();
+  if (s.length < 2) return false;
+  // 1. تكرار حرف واحد ≥ 5 مرات متتالية (مثلاً "kkkkk")
+  if (/(.)\1{4,}/.test(s)) return true;
+  // 2. نسبة الحروف الفريدة قليلة جداً للنص الطويل (≥9 chars + ≤30% unique)
+  if (s.length >= 9) {
+    const unique = new Set(s.toLowerCase().replace(/\s/g, "")).size;
+    if (unique / s.replace(/\s/g, "").length < 0.3) return true;
+  }
+  // 3. لا حروف عربية ولا لاتينية إطلاقاً
+  const hasLetters = /[؀-ۿa-zA-Z]/.test(s);
+  if (!hasLetters && s.length >= 4) return true;
+  return false;
+}
+
+// كشف الأسئلة الشخصية أو الخارجة عن السياق
+// ملاحظة: \b لا يعمل مع الحروف العربية، فنستخدم anchors نصية أو غياب word-boundary
+function isOffTopicQuery(text) {
+  const s = String(text || "").trim().toLowerCase();
+  if (s.length < 3) return false;
+  const patterns = [
+    /(ما|ايش|إيش|شو|وش)\s*اسمك/i,
+    /كم\s*عمرك/i,
+    /من\s*انت/i,
+    /(انت|أنت)\s*(بوت|روبوت|انسان|إنسان|آلة)/i,
+    /تحكي\s*عربي/i,
+    /(الطقس|الجو|weather)/i,
+    /كيف\s*حالك/i,
+    /كيف\s*الحال/i,
+    /(صباح|مساء)\s*(الخير|الفل|النور)/i,
+    /^(haha|hehe|lol|🤣|😂|hi|hello|مرحبا)$/i,
+    /(تحب|بتحب)\s*(ال|أ|إ)/i,
+  ];
+  return patterns.some(p => p.test(s));
+}
+
+// التحقق من اسم سليم (للـ COLLECT_NAME)
+// يقبل: حروف عربية/لاتينية + مسافة + بعض الرموز الشائعة
+// يرفض: gibberish، أسئلة، أرقام فقط
+function isValidName(text) {
+  const s = String(text || "").trim();
+  if (s.length < 2 || s.length > 80) return false;
+  if (isGibberish(s) || isOffTopicQuery(s)) return false;
+  // يجب أن يحوي حروف لاتينية أو عربية (لا يكفي رموز/أرقام)
+  // ملاحظة: \W في JS regex بدون u-flag يعتبر العربية non-word، فلا نستخدمه
+  if (!/[؀-ۿa-zA-Z]/.test(s)) return false;
+  // يرفض إذا كان أرقام فقط (مع/بدون مسافات)
+  if (/^[\d\s]+$/.test(s)) return false;
+  return true;
+}
+
+// كشف نية "العودة للسلة لتعديل الطلب" — يقبل صياغات متعددة
+function isEditIntent(text) {
+  const s = String(text || "").trim().toLowerCase();
+  if (!s || s.length > 50) return false;
+  // أي رسالة قصيرة تحتوي على كلمة تشير إلى التعديل/العودة
+  return /(تعديل|تعدل|عدل|تغيير|غير|رجوع|ارجع|إرجع|عودة|عود|back|edit|change|modify|cancel)/i.test(s);
+}
+
+// ─── Location helpers — Reverse Geocoding (Nominatim مجاني) ──────────────────
+// يحوّل الإحداثيات إلى اسم منطقة/حي/مدينة بالعربية
+async function reverseGeocode(lat, lng) {
+  try {
+    // zoom=17 يعطي تفصيل الشارع. accept-language=ar للأسماء العربية
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar&zoom=17&addressdetails=1`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const r = await fetch(url, {
+      headers: { "User-Agent": "ثواني | Thawani/1.0 (WhatsApp Store Bot)" },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const a = d?.address || {};
+    // نُضمّن الشارع لأن الـ suburb من Nominatim ضعيف في السعودية أحياناً
+    const parts = [
+      a.road || a.pedestrian || a.residential,
+      a.suburb || a.neighbourhood || a.quarter,
+      a.city_district || a.district,
+      a.city || a.town || a.village,
+    ].filter(Boolean);
+    // إزالة التكرار (لو road و suburb بنفس الاسم)
+    const seen = new Set();
+    const unique = parts.filter(p => { const k = p.trim(); if (seen.has(k)) return false; seen.add(k); return true; });
+    const compact = unique.length ? unique.join("، ") : null;
+    return compact || d?.display_name || null;
+  } catch (e) {
+    console.warn(`[geo] reverse failed: ${e.message}`);
+    return null;
+  }
+}
+
+// يكتشف ويحلّل payload الموقع المشترك القادم من whatsapp-manager
+// الصيغة: "📍|lat,lng|directLabel"
+async function resolveSharedLocation(payload) {
+  const m = String(payload || "").match(/^📍\|(-?\d+\.?\d*),(-?\d+\.?\d*)\|(.*)$/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]);
+  const lng = parseFloat(m[2]);
+  const direct = (m[3] || "").trim();
+  // 1) لو واتساب أرسل الاسم/العنوان معه — نستخدمه
+  if (direct) return { lat, lng, name: direct, source: "wa" };
+  // 2) reverse geocoding من OpenStreetMap
+  const name = await reverseGeocode(lat, lng);
+  if (name) return { lat, lng, name, source: "osm" };
+  // 3) آخر حل: إحداثيات + اقتراح للعميل
+  return { lat, lng, name: `موقع جغرافي (${lat.toFixed(4)}, ${lng.toFixed(4)})`, source: "raw" };
+}
+
+// ─── Stock helpers ────────────────────────────────────────────────────────────
+// المنتج "متوفر" إذا: available !== false AND (stock === null OR stock > 0)
+function isProductInStock(p) {
+  if (!p || p.available === false) return false;
+  return p.stock === null || p.stock === undefined || p.stock > 0;
+}
+
+// خصم الكميات المباعة من stores.json بعد تأكيد الطلب
+function decrementStock(storeId, cartItems) {
+  if (!storeId || !Array.isArray(cartItems) || !cartItems.length) return;
+  try {
+    const file = path.join(DATA_DIR, "stores.json");
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    const store = data.stores.find(s => s.id === storeId);
+    if (!store) return;
+    let changed = false;
+    for (const item of cartItems) {
+      const prod = (store.products || []).find(p => String(p.id) === String(item.id));
+      if (!prod) continue;
+      // null/undefined = لا محدود، نتجاهل
+      if (prod.stock === null || prod.stock === undefined) continue;
+      const qty = Math.max(0, Number(item.qty) || 0);
+      prod.stock = Math.max(0, prod.stock - qty);
+      changed = true;
+    }
+    if (changed) fs.writeFileSync(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.warn("[stock] decrement failed:", e.message);
+  }
 }
 
 // ─── Send Functions ───────────────────────────────────────────────────────────
@@ -415,44 +889,97 @@ async function sendImage(to, source, caption) {
   }
 }
 
-// sendButtons: tries real Baileys buttons, falls back to numbered text
+// sendButtons: poll (ضغطة واحدة، بدون كتابة) ← fallback نص مرقّم
 async function sendButtons(to, { body, buttons, footer }) {
-  const demo = demoCtx.getStore();
-  const safe = buttons.slice(0, 3);
-  // Always keep numeric map as fallback (if user types 1/2/3)
+  const demo  = demoCtx.getStore();
+  const { storeId } = storeCtx.getStore() || {};
+  const safe  = buttons.slice(0, 10);
   const btnMap = {};
   safe.forEach((b, i) => { btnMap[String(i + 1)] = b.id; });
   sessionManager.update(to, { _btnMap: btnMap });
 
+  const nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+
   if (demo) {
-    const nums = ["1️⃣","2️⃣","3️⃣"];
-    const opts = safe.map((b, i) => `${nums[i]} ${b.title}`).join("\n");
+    const opts = safe.map((b, i) => `${nums[i] || (i + 1) + "."} ${b.title}`).join("\n");
     demo.buffer.push({ type: "text", body: body + "\n\n" + opts + (footer ? "\n\n" + footer : "") });
     return;
   }
-  const { storeId } = storeCtx.getStore() || {};
   if (!storeId) return;
-  await waMgr.sendButtons(storeId, to, { body, buttons: safe, footer });
+
+  // text plain فقط في الحالات التالية (لا polls):
+  // - AI/Numeric/Webview paths
+  // - أثناء خطوات checkout (اسم، عنوان، وقت، تأكيد) — لأن polls قد لا تصل بشكل مرئي
+  const sess = sessionManager.get(to);
+  const checkoutSteps = ["COLLECT_NAME","COLLECT_LOCATION","SCHEDULE_ORDER","COLLECT_TIME","CONFIRM_ORDER"];
+  const textOnly = sess?.path === "ai"
+                || sess?.path === "numeric"
+                || sess?.path === "webview"
+                || checkoutSteps.includes(sess?.step);
+
+  if (!textOnly) {
+    // محاولة poll — العميل يضغط فقط، لا يكتب شيئاً
+    const pollSent = await waMgr.sendNativeButtons(storeId, to, {
+      body,
+      buttons: safe,
+      footer: footer || "",
+    });
+    if (pollSent) return;
+  }
+
+  // text المرقّم — يصلح كـ fallback أو كـ default في AI/Numeric mode
+  const opts = safe.map((b, i) => `${nums[i] || (i + 1) + "."} ${b.title}`).join("\n");
+  const hint = safe.length > 1 ? "\n\n↩️ *اكتب رقم اختيارك*" : "";
+  await waMgr.sendMessage(storeId, to, body + "\n\n" + opts + (footer ? "\n\n" + footer : "") + hint);
 }
 
-// sendList: tries real Baileys list message, falls back to numbered text
+// sendList: native list message → fallback نص عادي بدون رابط
 async function sendList(to, { body, sections, footer, buttonText }) {
-  const demo = demoCtx.getStore();
-  const rows = sections.flatMap(s => s.rows);
-  // Always keep numeric map as fallback
+  const demo  = demoCtx.getStore();
+  const { storeId } = storeCtx.getStore() || {};
+  const rows  = sections.flatMap(s => s.rows);
   const rowMap = {};
   rows.forEach((r, i) => { rowMap[String(i + 1)] = r.id; });
   sessionManager.update(to, { _btnMap: rowMap });
 
+  const nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+  const opts = rows.map((r, i) => `${nums[i] || (i+1)+"."} ${r.title}`).join("\n");
+
   if (demo) {
-    const nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
-    const opts = rows.map((r, i) => `${nums[i] || `${i+1}.`} ${r.title}`).join("\n");
     demo.buffer.push({ type: "text", body: body + "\n\n" + opts + (footer ? "\n\n" + footer : "") });
     return;
   }
-  const { storeId } = storeCtx.getStore() || {};
   if (!storeId) return;
-  await waMgr.sendList(storeId, to, { body, sections, footer, buttonText });
+
+  // text plain في AI/Numeric/Webview أو أثناء checkout
+  const sess = sessionManager.get(to);
+  const checkoutSteps = ["COLLECT_NAME","COLLECT_LOCATION","SCHEDULE_ORDER","COLLECT_TIME","CONFIRM_ORDER"];
+  const textOnly = sess?.path === "ai"
+                || sess?.path === "numeric"
+                || sess?.path === "webview"
+                || checkoutSteps.includes(sess?.step);
+
+  if (!textOnly) {
+    const sent = await waMgr.sendNativeList(storeId, to, {
+      body,
+      sections,
+      footer:     footer || "",
+      buttonText: buttonText || "📋 عرض الخيارات",
+    });
+    if (sent) return;
+  }
+
+  // text fallback (أو الافتراضي في AI/Numeric mode)
+  const text = body + "\n\n" + opts + (footer ? "\n\n" + footer : "");
+  await waMgr.sendMessage(storeId, to, text);
+}
+
+// ─── Arabic/Persian digit normalization (٠١٢...٩ + ۰۱۲...۹ → 0123...9) ─────
+function normalizeDigits(s) {
+  if (typeof s !== "string") return s;
+  return s
+    .replace(/[٠-٩]/g, d => "0123456789"["٠١٢٣٤٥٦٧٨٩".indexOf(d)])
+    .replace(/[۰-۹]/g, d => "0123456789"["۰۱۲۳۴۵۶۷۸۹".indexOf(d)]);
 }
 
 // ─── Conversation Router ──────────────────────────────────────────────────────
@@ -460,9 +987,55 @@ async function handleMessage(from, incoming) {
   const { store, storeId } = storeCtx.getStore() || {};
   const session   = sessionManager.get(from);
 
+  // normalize Arabic/Persian digits → English قبل أي معالجة
+  incoming = normalizeDigits(incoming);
+
+  // ── Human Handoff: العميل يطلب مسؤول ──────────────────────
+  const HANDOFF_TRIGGERS = /^(احتاج مسؤول|اريد مسؤول|مسؤول|اريد التحدث مع مسؤول|بشري|انسان|human)$/i;
+  if (HANDOFF_TRIGGERS.test(String(incoming).trim())) {
+    const fs = require("fs");
+    const path = require("path");
+    const handoffFile = path.join(__dirname, "..", "data", "handoffs.json");
+    let handoffs = {};
+    try { handoffs = JSON.parse(fs.readFileSync(handoffFile, "utf8")); } catch {}
+    handoffs[from] = {
+      storeId,
+      phone:     from,
+      startedAt: new Date().toISOString(),
+      lastMsg:   String(incoming).slice(0, 200),
+    };
+    fs.writeFileSync(handoffFile, JSON.stringify(handoffs, null, 2));
+    // أبلغ الستور owner عبر MASTER_PHONE
+    try {
+      const ownerJid = (store?.ownerPhone || "").replace(/[^\d]/g,"") + "@s.whatsapp.net";
+      if (ownerJid && ownerJid !== "@s.whatsapp.net") {
+        await waMgr.sendMessage(storeId, ownerJid,
+          `🆘 *عميل يحتاج مساعدة*\n\nرقم: \`${phoneNum(from)}\`\nالمتجر: ${store?.storeName || "—"}\n\nالعميل ينتظرك. افتح واتساب وتحدث معه مباشرة.\nالبوت متوقف لهذا العميل حتى تستأنفه من لوحة الإدارة.`);
+      }
+    } catch {}
+    return sendText(from,
+      `🙋 *تم تنبيه المسؤول*\n\nسيتواصل معك مسؤول قريباً جداً.\n\n_البوت متوقف الآن لهذه المحادثة — اكتب لنا مباشرة._`);
+  }
+
+  // إذا العميل في handoff state، البوت يسكت تماماً
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const handoffFile = path.join(__dirname, "..", "data", "handoffs.json");
+    if (fs.existsSync(handoffFile)) {
+      const handoffs = JSON.parse(fs.readFileSync(handoffFile, "utf8"));
+      if (handoffs[from] && handoffs[from].storeId === storeId) {
+        console.log(`[handoff] silent for ${from} (paused for ${storeId})`);
+        return;
+      }
+    }
+  } catch {}
+
   // Resolve numbered input → button ID using session's _btnMap
+  // في AI mode الأرقام تصل كما هي (AI يحلل النص الحر)
+  // في Numeric/buttons/webview: تتحول للـ buttonId
   let msg = incoming;
-  if (/^\d+$/.test(incoming) && session._btnMap?.[incoming]) {
+  if (/^\d+$/.test(incoming) && session._btnMap?.[incoming] && session.path !== "ai") {
     msg = session._btnMap[incoming];
   }
 
@@ -480,12 +1053,12 @@ async function handleMessage(from, incoming) {
 
   // ── Loyalty points command ───────────────────────────────────────────────────
   if (/^(نقاطي|رصيد نقاطي|loyalty|points)$/i.test(msg?.trim() || "")) {
-    return sendText(from, pointsMessage(from));
+    return sendText(from, pointsMessage(storeId, from, store));
   }
 
   // Block outside working hours (except mid-flow)
   if (!isStoreOpen(store)) {
-    const midFlow = ["COLLECT_NAME","COLLECT_LOCATION","CONFIRM_ORDER","QUANTITY","CART_ACTION","POST_ORDER","COUPON","RATING"]
+    const midFlow = ["COLLECT_NAME","COLLECT_LOCATION","CONFIRM_ORDER","QUANTITY","CART_ACTION","POST_ORDER","COUPON","RATING","ORDER_BROWSE"]
       .includes(session.step);
     if (!midFlow) {
       sessionManager.reset(from);
@@ -501,9 +1074,14 @@ async function handleMessage(from, incoming) {
     }
   }
 
-  const isResetCmd = msg === "MAIN_MENU" || /^(start|ابدأ|البدايه|البداية|رجوع|الرئيسية|مرحبا|مرحباً|السلام عليكم|وعليكم السلام|هلا|هلو|أهلا|اهلا|hi|hello|hey)$/i.test(msg);
-  const midFlow    = ["COLLECT_NAME","COLLECT_LOCATION","SCHEDULE_ORDER","COLLECT_TIME","CONFIRM_ORDER","QUANTITY","CART_ACTION","CART_EDIT","POST_ORDER","COUPON"]
+  // أوامر الـ reset الصريحة (تعمل دائماً)
+  const isHardReset = msg === "MAIN_MENU" || /^(start|ابدأ|البدايه|البداية|الرئيسية)$/i.test(msg);
+  // التحيات (تعمل reset فقط لو خارج mid-flow — لا نُربك العميل وسط إكمال طلبه)
+  const isGreeting  = /^(مرحبا|مرحباً|السلام عليكم|وعليكم السلام|هلا|هلو|أهلا|اهلا|hi|hello|hey|رجوع)$/i.test(msg);
+  const midFlow     = ["COLLECT_NAME","COLLECT_LOCATION","SCHEDULE_ORDER","COLLECT_TIME","CONFIRM_ORDER","QUANTITY","CART_ACTION","CART_EDIT","POST_ORDER","COUPON","ORDER_BROWSE","AI_BROWSE","NUMERIC_MENU","NUMERIC_FEEDBACK"]
     .includes(session.step);
+
+  const isResetCmd = isHardReset || (isGreeting && !midFlow);
 
   if (isResetCmd || (!msg && !midFlow)) {
     sessionManager.reset(from);
@@ -528,8 +1106,14 @@ async function handleMessage(from, incoming) {
     });
   }
 
+  // ── Adaptive Bot: AI mode يلتقط أي رسالة قبل الـ switch ──────────────────────
+  if (session.path === "ai" && !midFlow) {
+    return handleAIMode(from, incoming, session);
+  }
+
   switch (session.step) {
     case "WELCOME":          return sendWelcome(from);
+    case "PATH_SELECT":      return handlePathSelect(from, msg);
     case "MAIN_MENU":        return handleMainMenu(from, msg);
     case "CATEGORY":         return handleCategorySelection(from, msg, session);
     case "PRODUCT":          return handleProductSelection(from, msg, session);
@@ -537,21 +1121,138 @@ async function handleMessage(from, incoming) {
     case "CART_ACTION":      return handleCartAction(from, msg, session);
     case "CART_EDIT":        return handleCartEdit(from, msg, session);
     case "COUPON":           return handleCouponStep(from, msg, session);
+    case "ORDER_BROWSE":
+      if (msg === "ORDER_CONFIRM") return handleOrderBrowse(from, "تأكيد", session);
+      if (msg === "ORDER_MENU")    return sendTextOrderMenu(from);
+      return handleOrderBrowse(from, msg, session);
     case "COLLECT_NAME":     return handleCollectName(from, msg, session);
     case "COLLECT_LOCATION": return handleCollectLocation(from, msg, session);
     case "SCHEDULE_ORDER":   return handleScheduleOrder(from, msg, session);
     case "COLLECT_TIME":     return handleCollectTime(from, msg, session);
     case "CONFIRM_ORDER":    return handleConfirmOrder(from, msg, session);
     case "POST_ORDER":       return handlePostOrder(from);
+    case "AI_BROWSE":        return handleAIMode(from, incoming, session);
+    case "NUMERIC_MENU":     return handleNumericMode(from, incoming, session);
+    case "NUMERIC_FEEDBACK": return handleNumericFeedback(from, incoming, session);
     case "DONE":             return; // صمت — ينتظر التقييم أو تحية جديدة
     default:                 return sendWelcome(from);
   }
 }
 
 // ─── Step Handlers ────────────────────────────────────────────────────────────
+
+// يبني أقسام رسالة الترحيب ديناميكياً حسب toggles كل متجر
+// النصوص الافتراضية لأقسام رسالة الترحيب (قابلة للتخصيص من Master)
+const _DEFAULT_SECTION_WEBVIEW =
+`🥇 *الطريقة الأولى — الصفحة التفاعلية* ⭐
+
+🔗 اضغط هذا الرابط:
+{{order_link}}
+
+ماذا يحدث؟
+  ✓ تفتح داخل واتساب (لا تخرج من التطبيق)
+  ✓ ترى المنتجات بالصور والأسعار
+  ✓ تختار الكميات بأزرار + و −
+  ✓ تضيف ملاحظات على الطلب
+  ✓ بضغطة "تأكيد" يعود الشات تلقائياً`;
+
+const _DEFAULT_SECTION_NUMERIC =
+`🥈 *الطريقة الثانية — اختر بالأرقام*
+
+📤 أرسل الرقم *1*
+
+ستظهر لك قائمة:
+  ‎[1] 📜 عرض المنيو
+  ‎[2] ☕ طلب جديد بالأرقام
+  ‎[3] 📍 موقع الفرع وأوقات العمل
+  ‎[4] 📞 شكوى أو اقتراح`;
+
+const _DEFAULT_SECTION_AI =
+`🥉 *الطريقة الثالثة — اكتب بكلامك* 🤖
+
+📤 أرسل الرقم *2* ثم اكتب طلبك بحرية
+
+أمثلة يفهمها البوت:
+  • _"عايز كباب وعصير برتقال"_
+  • _"شيل العصير"_ — حذف
+  • _"خلي الكباب 3"_ — تعديل
+  • _"كم سعر الكنافة؟"_ — سؤال
+  • _"تأكيد"_ — إتمام الطلب`;
+
+function _buildWelcomeSections(store, orderLink, custom = {}) {
+  const ew = store?.enableWebview !== false; // default true
+  const en = store?.enableNumeric !== false;
+  const ea = store?.enableAI      !== false;
+
+  // استبدال المتغيرات في النصوص المخصصة
+  const _interp = (s) => String(s || "").replace(/\{\{order_link\}\}/g, orderLink || "");
+
+  // قسم الرابط (مختصر — للاستخدام في {{paths_block}})
+  const webviewShort = (ew && orderLink)
+    ? `📋 *قائمة الطلب التفاعلية:*\n${orderLink}\n\n_صفحة مصورة كاملة تظهر داخل واتساب_\n_اختر طلبك ثم اضغط تأكيد_`
+    : "";
+
+  // قسم الرابط (مفصّل) — مخصص أو افتراضي
+  const webviewDetailed = (ew && orderLink)
+    ? _interp(custom.welcomeSectionWebview || custom.webview || _DEFAULT_SECTION_WEBVIEW)
+    : "";
+
+  // قسم الأرقام
+  const numericDetailed = en
+    ? _interp(custom.welcomeSectionNumeric || custom.numeric || _DEFAULT_SECTION_NUMERIC)
+    : "";
+
+  // قسم الكتابة الحرة
+  const aiDetailed = ea
+    ? _interp(custom.welcomeSectionAI || custom.ai || _DEFAULT_SECTION_AI)
+    : "";
+
+  // سطر التذييل (الإرشادات) — مخصص أو يتكيف بذكاء حسب الميزات المفعّلة
+  const customTips = custom.welcomeSectionTips || custom.tips;
+  let tipsLine = "";
+  if (customTips && String(customTips).trim()) {
+    tipsLine = _interp(customTips);
+  } else if (en && ea && ew && orderLink) {
+    tipsLine = "✏️ للبدء: *1* للأرقام • *2* للكتابة • أو افتح الرابط أعلاه 👆";
+  } else if (en && ea) {
+    tipsLine = "✏️ للبدء: *1* للأرقام • *2* للكتابة";
+  } else if (en && ew && orderLink) {
+    tipsLine = "✏️ للبدء: *1* للأرقام • أو افتح الرابط أعلاه 👆";
+  } else if (ea && ew && orderLink) {
+    tipsLine = "✏️ للبدء: *2* للكتابة • أو افتح الرابط أعلاه 👆";
+  } else if (en) {
+    tipsLine = "✏️ للبدء: أرسل *1*";
+  } else if (ea) {
+    tipsLine = "✏️ للبدء: أرسل *2*";
+  } else if (ew && orderLink) {
+    tipsLine = "✏️ للبدء: افتح الرابط أعلاه 👆";
+  }
+
+  // الـ paths_block المختصر (للقوالب البسيطة)
+  const blockParts = [];
+  if (webviewShort) blockParts.push(webviewShort);
+  const chatOpts = [];
+  if (en) chatOpts.push("   *1*  ▸  قائمة بالأرقام  🔢");
+  if (ea) chatOpts.push("   *2*  ▸  اكتب طلبك بحرية  💬");
+  if (chatOpts.length) {
+    const intro = (ew && orderLink) ? "*أو إن أحببت الطلب من الشات:*" : "*كيف تحب تطلب؟*";
+    blockParts.push(intro + "\n\n" + chatOpts.join("\n"));
+  }
+  if (tipsLine && blockParts.length) blockParts.push(tipsLine);
+  const pathsBlock = blockParts.join("\n\n━━━━━━━━━━━━━━━━━━\n\n");
+
+  return {
+    paths_block:     pathsBlock,
+    webview_section: webviewDetailed,
+    numeric_section: numericDetailed,
+    ai_section:      aiDetailed,
+    tips_line:       tipsLine,
+  };
+}
+
 async function sendWelcome(from) {
-  sessionManager.set(from, { step: "MAIN_MENU", cart: [] });
-  const { store } = storeCtx.getStore() || {};
+  sessionManager.set(from, { step: "PATH_SELECT", cart: [], path: null });
+  const { store, storeId } = storeCtx.getStore() || {};
   const name = store?.storeName || STORE_NAME;
 
   if (!isStoreOpen(store)) {
@@ -562,18 +1263,75 @@ async function sendWelcome(from) {
     );
   }
 
-  const welcome = store?.welcomeMessage || `أهلاً وسهلاً في *${name}* 🌴\n\nكيف يمكنني مساعدتك اليوم؟`;
-  return sendButtons(from, {
-    body: welcome,
-    buttons: [
-      { id: "SEE_MENU",    title: "📋 عرض القائمة" },
-      { id: "MY_CART",     title: "🛒 سلة مشترياتي" },
-      { id: "CONTACT_US",  title: "📞 تواصل معنا" },
-    ],
-  });
+  const greeting = store?.welcomeMessage || `أهلاً وسهلاً في *${name}* 🌴`;
+  const hasProducts = (store?.products || []).filter(isProductInStock).length > 0;
+
+  // الرابط مفعّل لو: الباقة تشمل webOrder + المتجر لم يعطّله + يوجد منتجات
+  let orderLink = "";
+  const webOrderAllowed = hasFeature(store?.plan, "webOrder") && store?.enableWebview !== false;
+  if (hasProducts && storeId && webOrderAllowed) {
+    try {
+      const slug = waMgr.createWebOrderToken(storeId, from);
+      const base = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+      orderLink = `${base}/${slug}`;
+    } catch (e) { console.warn("welcome-link:", e.message); }
+  }
+
+  // قراءة القالب من إعدادات Master
+  const masterRouter = require("./master-router");
+  const settings = (typeof masterRouter.readOwnerSettings === "function")
+    ? masterRouter.readOwnerSettings()
+    : {};
+  const tplWithLink = settings.welcomeTemplate       || masterRouter.DEFAULT_WELCOME_TEMPLATE;
+  const tplNoLink   = settings.welcomeTemplateNoLink || masterRouter.DEFAULT_WELCOME_NO_LINK;
+
+  const template = orderLink ? tplWithLink : tplNoLink;
+  const sections = _buildWelcomeSections(store, orderLink, settings);
+
+  // تنظيف ذكي: لو القالب يحتوي على hardcoded لينك معطل، نُلغي السطور المرتبطة
+  let cleaned = template;
+  if (!sections.webview_section) {
+    // أزل أي كتل تتضمن "{{order_link}}" أو ذكر الرابط
+    cleaned = cleaned.replace(/\n*[^\n]*\{\{order_link\}\}[^\n]*\n*/g, "\n");
+  }
+
+  let msg = cleaned
+    .replace(/\{\{greeting\}\}/g,         greeting)
+    .replace(/\{\{store_name\}\}/g,       name)
+    .replace(/\{\{order_link\}\}/g,       orderLink)
+    .replace(/\{\{paths_block\}\}/g,      sections.paths_block)
+    .replace(/\{\{webview_section\}\}/g,  sections.webview_section)
+    .replace(/\{\{numeric_section\}\}/g,  sections.numeric_section)
+    .replace(/\{\{ai_section\}\}/g,       sections.ai_section)
+    .replace(/\{\{tips_line\}\}/g,        sections.tips_line);
+
+  // ─── تنظيف ذكي للأقسام الفارغة والـ separators المكررة ─────────────────────
+  // 1. دمج separators متتالية (مع أو بدون فراغ بينها) في واحدة
+  msg = msg.replace(/(━{5,}\s*\n\s*)+━{5,}/g, "━━━━━━━━━━━━━━━━━━");
+  // 2. حذف separator في بداية النص
+  msg = msg.replace(/^[\s\n]*━{5,}\s*\n+/, "");
+  // 3. حذف separator في نهاية النص
+  msg = msg.replace(/\n+\s*━{5,}[\s\n]*$/, "");
+  // 4. تقليص الأسطر الفارغة المتتالية إلى سطرين كحد أقصى
+  msg = msg.replace(/\n{3,}/g, "\n\n");
+  // 5. ترتيب أنيق نهائي
+  msg = msg.trim();
+
+  // ─── نصوص الـ Master المخصصة: رأس + تذييل ──────────────────────────────────
+  const _subVars = (s) => String(s || "")
+    .replace(/\{\{store_name\}\}/g, name)
+    .replace(/\{\{greeting\}\}/g,   greeting)
+    .replace(/\{\{order_link\}\}/g, orderLink);
+  const header = _subVars(settings.welcomeHeader || "").trim();
+  const footer = _subVars(settings.welcomeFooter || "").trim();
+  if (header) msg = header + "\n\n" + msg;
+  if (footer) msg = msg + "\n\n" + footer;
+
+  return sendText(from, msg);
 }
 
 async function handleMainMenu(from, msg) {
+  if (msg === "ORDER_WEB")  return sendTextOrderMenu(from);
   if (msg === "SEE_MENU")   return sendCategoryMenu(from);
   if (msg === "MY_CART")    return showCart(from, sessionManager.get(from));
   if (msg === "CONTACT_US") {
@@ -587,11 +1345,354 @@ async function handleMainMenu(from, msg) {
   return sendWelcome(from);
 }
 
+// ─── Path Selection (مع توجيه ذكي حسب toggles كل متجر) ──────────────────────
+async function handlePathSelect(from, msg) {
+  const raw = String(msg || "").trim().toLowerCase();
+  const { store } = storeCtx.getStore() || {};
+  const numericEnabled = store?.enableNumeric !== false;
+  const aiEnabled      = store?.enableAI      !== false;
+
+  // المسار 1: أرقام
+  if (raw === "1" || /^(ارقام|أرقام|رقم|سريع|بسيط|numeric)/i.test(raw)) {
+    if (!numericEnabled) {
+      return sendText(from, "هذه الطريقة غير متاحة حالياً في هذا المتجر 🙏\n\nأرسل أي رسالة لرؤية الخيارات المتاحة.");
+    }
+    sessionManager.update(from, { step: "NUMERIC_MENU", path: "numeric" });
+    return sendNumericMenu(from);
+  }
+  // المسار 2: AI
+  if (raw === "2" || /^(كتاب|اكتب|كلام|ذكاء|ai|حر)/i.test(raw)) {
+    if (!aiEnabled) {
+      return sendText(from, "هذه الطريقة غير متاحة حالياً في هذا المتجر 🙏\n\nأرسل أي رسالة لرؤية الخيارات المتاحة.");
+    }
+    sessionManager.update(from, { step: "AI_BROWSE", path: "ai", cart: [] });
+    const name = store?.storeName || STORE_NAME;
+    return sendText(from,
+      `ممتاز! 💬 اكتب طلبك بكلامك العادي.\n\n` +
+      `أمثلة:\n` +
+      `• "عايز كباب وعصير برتقال"\n` +
+      `• "ضيف 3 شيش طاووق"\n` +
+      `• "كم سعر الكنافة؟"\n` +
+      `• "شيل العصير"\n` +
+      `• "تأكيد الطلب"\n\n` +
+      `_متجر ${name} — مدعوم بذكاء اصطناعي_`
+    );
+  }
+  // نص حر → AI mode (لو متاح)
+  if (aiEnabled && msg && /[؀-ۿ]/.test(msg) && msg.length > 3) {
+    sessionManager.update(from, { step: "AI_BROWSE", path: "ai", cart: [] });
+    return handleAIMode(from, msg, sessionManager.get(from));
+  }
+  // افتراضي: أعد رسالة الترحيب
+  return sendWelcome(from);
+}
+
+// ─── Numeric Mode — قائمة بأربع خيارات بالأرقام ──────────────────────────────
+async function sendNumericMenu(from) {
+  const { store } = storeCtx.getStore() || {};
+  const name = store?.storeName || STORE_NAME;
+  return sendText(from,
+    `مرحباً بك في *${name}* ☕✨\n\n` +
+    `للطلب الآلي السريع، يرجى إرسال رقم الخيار المطلوب:\n\n` +
+    `‎[1] 📜 عرض المنيو (ملف PDF عالي الجودة)\n` +
+    `‎[2] ☕ طلب جديد مباشرة\n` +
+    `‎[3] 📍 موقع الفرع وأوقات العمل\n` +
+    `‎[4] 📞 شكوى أو اقتراح\n\n` +
+    `_اكتب 0 للعودة لاختيار طريقة الطلب_`
+  );
+}
+
+async function handleNumericMode(from, msg, session) {
+  const raw = String(msg || "").trim();
+  const { store, storeId } = storeCtx.getStore() || {};
+  const name     = store?.storeName || STORE_NAME;
+  const hStart   = store?.workingHoursStart ?? hourStart;
+  const hEnd     = store?.workingHoursEnd   ?? hourEnd;
+  const address  = store?.address || store?.location || "—";
+
+  // 0 = عودة لقائمة المسارات الرئيسية
+  if (raw === "0" || /^(رجوع|عودة|back|main)$/i.test(raw)) {
+    sessionManager.reset(from);
+    return sendWelcome(from);
+  }
+
+  // [1] عرض المنيو PDF
+  if (raw === "1") {
+    await sendText(from, `📜 *منيو ${name}*\n\nجارٍ إرسال الكتالوج الكامل…`);
+    try {
+      await sendFullMenuMedia(from, "MENU_PDF");
+    } catch (e) {
+      await sendText(from, "تعذّر إرسال الـ PDF، نعرض القائمة نصياً 👇");
+      await sendNumericProductsList(from);
+    }
+    return sendText(from,
+      `هل تريد:\n\n` +
+      `‎[2] ☕ طلب جديد مباشرة\n` +
+      `‎[0] 🔙 العودة لاختيار طريقة الطلب`
+    );
+  }
+
+  // [2] طلب جديد — flow كامل بالأرقام (لا webview، لا أزرار)
+  if (raw === "2") {
+    if (!(store?.products || []).filter(isProductInStock).length) {
+      return sendText(from, "عذراً، لا توجد منتجات متاحة حالياً. حاول لاحقاً.");
+    }
+    sessionManager.update(from, { step: "CATEGORY", path: "numeric" });
+    return sendCategoryMenu(from);
+  }
+
+  // [3] موقع الفرع وأوقات العمل
+  if (raw === "3") {
+    const mapsLink = (store?.locationMapUrl || store?.mapsUrl || "");
+    return sendText(from,
+      `📍 *موقع ${name}*\n\n` +
+      `العنوان: ${address}\n` +
+      (mapsLink ? `\n🗺️ ${mapsLink}\n` : "") +
+      `\n⏰ *أوقات العمل:*\n` +
+      `من الساعة ${formatHour(hStart)} حتى ${formatHour(hEnd)}\n\n` +
+      `_اكتب 0 للعودة_`
+    );
+  }
+
+  // [4] شكوى أو اقتراح — استلام النص ثم تأكيد
+  if (raw === "4") {
+    sessionManager.update(from, { step: "NUMERIC_FEEDBACK" });
+    return sendText(from,
+      `📞 *شكوى أو اقتراح*\n\n` +
+      `اكتب رسالتك في الرسالة التالية، وسيصل إلى إدارة *${name}* مباشرة.\n\n` +
+      `_اكتب 0 لإلغاء_`
+    );
+  }
+
+  // أي إدخال آخر → نعيد القائمة
+  return sendNumericMenu(from);
+}
+
+async function sendNumericProductsList(from) {
+  const { store } = storeCtx.getStore() || {};
+  const currency  = store?.currency || CURRENCY;
+  const cats = (store?.categories || []).filter(c =>
+    (store?.products || []).some(p => p.category === c.id && isProductInStock(p))
+  );
+  let msg = `📜 *قائمة ${store?.storeName || "المتجر"}*\n`;
+  for (const c of cats) {
+    const items = (store?.products || []).filter(p => p.category === c.id && isProductInStock(p));
+    if (!items.length) continue;
+    msg += `\n${c.emoji || "•"} *${c.name}:*\n`;
+    items.slice(0, 12).forEach(p => { msg += `  • ${p.name} — ${p.price} ${currency}\n`; });
+  }
+  return sendText(from, msg);
+}
+
+async function handleNumericFeedback(from, msg, session) {
+  const raw = String(msg || "").trim();
+  if (raw === "0" || /^(الغاء|إلغاء|cancel)/i.test(raw)) {
+    sessionManager.update(from, { step: "NUMERIC_MENU" });
+    return sendNumericMenu(from);
+  }
+  if (raw.length < 5) {
+    return sendText(from, "✏️ من فضلك اكتب رسالة لا تقل عن 5 أحرف، أو اكتب 0 لإلغاء.");
+  }
+  const { store, storeId } = storeCtx.getStore() || {};
+  const ownerPhone = store?.ownerPhone || process.env.MASTER_PHONE;
+  // أرسل للمالك
+  if (ownerPhone) {
+    try {
+      await waMgr.sendMessage(storeId, ownerPhone,
+        `📩 *رسالة جديدة من عميل*\n\n` +
+        `من: ${from}\n` +
+        `المحتوى:\n${raw}`
+      );
+    } catch (e) { console.warn("[feedback→owner] failed:", e.message); }
+  }
+  sessionManager.update(from, { step: "NUMERIC_MENU" });
+  return sendText(from,
+    `🙏 *شكراً لك!*\n\n` +
+    `وصلت رسالتك إلى إدارة ${store?.storeName || "المتجر"} وسنرد عليك قريباً.\n\n` +
+    `_اكتب 0 للعودة لاختيار طريقة الطلب_`
+  );
+}
+
+// ─── AI Mode Handler — يستخدم Groq Llama لفهم النية وتنفيذها ─────────────────
+function _buildMenuCtx(store) {
+  const cats  = (store?.categories || []).map(c => c.name);
+  const items = {};
+  for (const c of (store?.categories || [])) {
+    items[c.name] = (store?.products || [])
+      .filter(p => p.category === c.id && isProductInStock(p))
+      .map(p => ({ name: p.name, price: Number(p.price) || 0 }));
+  }
+  return { categories: cats, items };
+}
+
+function _findProduct(store, name) {
+  const target = String(name || "").trim().toLowerCase();
+  if (!target) return null;
+  const products = (store?.products || []).filter(isProductInStock);
+  // مطابقة دقيقة أولاً
+  let p = products.find(p => p.name.toLowerCase() === target);
+  if (p) return p;
+  // مطابقة جزئية (substring)
+  p = products.find(p => p.name.toLowerCase().includes(target) || target.includes(p.name.toLowerCase()));
+  return p || null;
+}
+
+function _formatCart(cart, currency) {
+  if (!cart.length) return "🛒 السلة فارغة";
+  let total = 0;
+  let lines = "🛒 *سلتك الحالية:*\n";
+  cart.forEach((it, i) => {
+    const subtotal = (it.price || 0) * it.qty;
+    total += subtotal;
+    lines += `${i + 1}. ${it.name} × ${it.qty} = ${subtotal} ${currency}\n`;
+  });
+  lines += `\n💰 *الإجمالي: ${total} ${currency}*`;
+  return lines;
+}
+
+async function handleAIMode(from, text, session) {
+  const { store, storeId } = storeCtx.getStore() || {};
+  const currency = store?.currency || CURRENCY;
+  const menuCtx  = _buildMenuCtx(store);
+  const cart     = session.cart || [];
+
+  // فلتر أولي: gibberish أو أسئلة شخصية → رد ودود بدل تمرير عشوائي للـ AI
+  if (isOffTopicQuery(text)) {
+    return sendText(from,
+      `🤖 أنا مساعد طلبات *${store?.storeName || "المتجر"}* — أساعدك في الطلب فقط.\n\n` +
+      `اكتب ما تريد طلبه (مثال: "عايز كوب قهوة") أو اكتب *"قائمة"* لرؤية المنيو.`
+    );
+  }
+  if (isGibberish(text)) {
+    return sendText(from,
+      `🤔 لم أفهم رسالتك جيداً!\n\n` +
+      `جرّب:\n` +
+      `• اكتب اسم منتج تريده\n` +
+      `• اكتب *"قائمة"* لرؤية المنيو\n` +
+      `• اكتب *"سلة"* لرؤية طلبك الحالي`
+    );
+  }
+
+  const intent = await aiParser.parseIntent(text, { step: session.step, cart, path: "ai" }, menuCtx);
+
+  // 1️⃣ عرض القائمة
+  if (intent.type === "menu") {
+    const cats = (store?.categories || []).filter(c =>
+      (store?.products || []).some(p => p.category === c.id && isProductInStock(p))
+    );
+    let msg = `📋 *قائمة ${store?.storeName || "المتجر"}*\n`;
+    for (const c of cats) {
+      const items = (store?.products || []).filter(p => p.category === c.id && isProductInStock(p));
+      if (items.length) {
+        msg += `\n${c.emoji || "•"} *${c.name}:*\n`;
+        items.slice(0, 8).forEach(p => { msg += `  • ${p.name} — ${p.price} ${currency}\n`; });
+      }
+    }
+    msg += `\n_اكتب طلبك بحرية_`;
+    return sendText(from, msg);
+  }
+
+  // 2️⃣ عرض السلة
+  if (intent.type === "cart") {
+    return sendText(from, _formatCart(cart, currency) + (cart.length ? `\n\n_اكتب "تأكيد" لإتمام الطلب_` : ""));
+  }
+
+  // 3️⃣ إضافة منتجات
+  if (intent.type === "add" && Array.isArray(intent.value)) {
+    const added = [];
+    const missed = [];
+    for (const item of intent.value) {
+      const prod = _findProduct(store, item.name);
+      if (!prod) { missed.push(item.name); continue; }
+      const qty = Math.max(1, Number(item.qty) || 1);
+      const existing = cart.find(c => String(c.id) === String(prod.id));
+      if (existing) existing.qty += qty;
+      else cart.push({ id: prod.id, name: prod.name, price: Number(prod.price) || 0, qty, imageUrl: prod.imageUrl || null });
+      added.push(`${prod.name} × ${qty}`);
+    }
+    sessionManager.update(from, { cart });
+    let reply = "";
+    if (added.length) reply += `✅ أُضيف: ${added.join("، ")}\n\n`;
+    if (missed.length) reply += `⚠️ غير متوفر: ${missed.join("، ")}\n\n`;
+    reply += _formatCart(cart, currency);
+    if (cart.length) reply += `\n\n_اكتب "تأكيد" لإتمام الطلب_`;
+    return sendText(from, reply);
+  }
+
+  // 4️⃣ حذف منتج
+  if (intent.type === "remove" && intent.value?.name) {
+    const prod = _findProduct(store, intent.value.name);
+    const before = cart.length;
+    if (prod) {
+      const idx = cart.findIndex(c => String(c.id) === String(prod.id));
+      if (idx >= 0) cart.splice(idx, 1);
+    }
+    sessionManager.update(from, { cart });
+    const reply = before > cart.length
+      ? `✅ تم الحذف.\n\n${_formatCart(cart, currency)}`
+      : `لم أجد "${intent.value.name}" في السلة.\n\n${_formatCart(cart, currency)}`;
+    return sendText(from, reply);
+  }
+
+  // 5️⃣ تعديل الكمية
+  if (intent.type === "update" && intent.value?.name) {
+    const prod = _findProduct(store, intent.value.name);
+    const qty  = Math.max(0, Number(intent.value.qty) || 0);
+    if (prod) {
+      const existing = cart.find(c => String(c.id) === String(prod.id));
+      if (existing) {
+        if (qty === 0) {
+          const idx = cart.findIndex(c => String(c.id) === String(prod.id));
+          if (idx >= 0) cart.splice(idx, 1);
+        } else existing.qty = qty;
+      } else if (qty > 0) {
+        cart.push({ id: prod.id, name: prod.name, price: Number(prod.price) || 0, qty, imageUrl: prod.imageUrl || null });
+      }
+    }
+    sessionManager.update(from, { cart });
+    return sendText(from, `✅ حُدِّث.\n\n${_formatCart(cart, currency)}`);
+  }
+
+  // 6️⃣ تأكيد الطلب
+  if (intent.type === "confirm") {
+    if (!cart.length) return sendText(from, "🛒 السلة فارغة. اكتب طلبك أولاً.");
+    sessionManager.update(from, { step: "COLLECT_NAME", path: "ai" });
+    return sendText(from, _formatCart(cart, currency) + `\n\n✏️ *اكتب اسمك للمتابعة:*`);
+  }
+
+  // 7️⃣ إلغاء
+  if (intent.type === "cancel") {
+    sessionManager.reset(from);
+    return sendText(from, "تم إلغاء الطلب. اكتب أي رسالة لبداية جديدة 🌸");
+  }
+
+  // 8️⃣ سؤال عام — رد ذكي بـ AI أو رد عام
+  if (intent.type === "question") {
+    return sendText(from,
+      `سؤال جيد! 🤔\n\n` +
+      `لمساعدتك، يمكنك:\n` +
+      `• كتابة "قائمة" لعرض المنيو\n` +
+      `• كتابة اسم المنتج للسؤال عن سعره\n` +
+      `• الاتصال بنا مباشرة من رقم المتجر`
+    );
+  }
+
+  // 9️⃣ غير مفهوم
+  return sendText(from,
+    `لم أفهم تماماً 🤔\n\n` +
+    `جرّب:\n` +
+    `• "قائمة" لرؤية المنتجات\n` +
+    `• "عايز [اسم منتج]"\n` +
+    `• "سلة" لمراجعة طلبك\n` +
+    `• "تأكيد" لإتمام الطلب`
+  );
+}
+
 async function sendCategoryMenu(from) {
   sessionManager.update(from, { step: "CATEGORY" });
   const { store } = storeCtx.getStore() || {};
   const categories = (store?.categories || []).filter(cat =>
-    (store.products || []).some(p => p.category === cat.id && p.available !== false)
+    (store.products || []).some(p => p.category === cat.id && isProductInStock(p))
   );
 
   if (categories.length === 0) {
@@ -656,7 +1757,7 @@ async function sendFullMenuMedia(from, type) {
 async function showProductsPage(from, cat, page) {
   const { store } = storeCtx.getStore() || {};
   const currency  = store?.currency || CURRENCY;
-  const products  = (store?.products || []).filter(p => p.category === cat && p.available !== false);
+  const products  = (store?.products || []).filter(p => p.category === cat && isProductInStock(p));
 
   if (products.length === 0) {
     sessionManager.update(from, { step: "MAIN_MENU" });
@@ -697,7 +1798,7 @@ async function handleProductSelection(from, msg, session) {
   const { store } = storeCtx.getStore() || {};
   const currency  = store?.currency || CURRENCY;
   const productId = msg.replace("PROD_", "");
-  const product   = (store?.products || []).find(p => String(p.id) === String(productId) && p.available !== false);
+  const product   = (store?.products || []).find(p => String(p.id) === String(productId) && isProductInStock(p));
   if (!product) return sendCategoryMenu(from);
 
   sessionManager.update(from, { step: "QUANTITY", pendingProduct: product });
@@ -930,29 +2031,51 @@ async function startCheckout(from, session) {
   const { store, storeId } = storeCtx.getStore() || {};
   const currency  = store?.currency || CURRENCY;
   const subtotal  = (session.cart || []).reduce((s, i) => s + i.price * i.qty, 0);
-  const pts       = getPoints(from);
-  const redeemable = Math.floor(pts.points / 100) * 100;
+  const pts       = getPoints(storeId, from);
+  const _loySet   = require("./loyalty").getSettings(store);
+  const redeemable = Math.floor(pts.points / _loySet.pointsForDiscount) * _loySet.pointsForDiscount;
+
+  // ── ميزة الكوبونات: مفعّلة افتراضياً، تتعطّل من store-admin ──
+  const couponsEnabled = store?.enableCoupons !== false;
+  const pointsEnabled  = redeemable >= 100; // النقاط فقط لو فيه رصيد
+
+  // لو الكوبونات معطّلة ولا توجد نقاط → نتخطى الخطوة ونذهب لجمع الاسم مباشرة
+  if (!couponsEnabled && !pointsEnabled) {
+    sessionManager.update(from, { step: "COLLECT_NAME" });
+    const isFreeText = session.path === "ai" || session.path === "numeric" || session.path === "webview";
+    const ask = `🛍️ *تأكيد الطلب*\n\n💰 الإجمالي: *${subtotal.toFixed(2)} ${currency}*\n\n📝 من فضلك *اكتب اسمك الكريم* لإتمام الطلب:`;
+    if (isFreeText) return sendText(from, ask);
+    return sendButtons(from, { body: ask, buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }] });
+  }
 
   sessionManager.update(from, { step: "COUPON", couponWaiting: false });
 
   const couponRows = [
-    { id: "COUPON_SKIP",  title: "⏭️ بدون كوبون",     description: "المتابعة بدون خصم" },
-    { id: "COUPON_ENTER", title: "🎟️ لدي كود خصم",    description: "أدخل كود الخصم" },
+    { id: "COUPON_SKIP",  title: "⏭️ متابعة بدون خصم", description: "إكمال الطلب مباشرة" },
   ];
-  if (redeemable >= 100) {
+  if (couponsEnabled) {
+    couponRows.push({ id: "COUPON_ENTER", title: "🎟️ لدي كود خصم", description: "أدخل كود الخصم" });
+  }
+  if (pointsEnabled) {
     couponRows.push({ id: "POINTS_REDEEM", title: `🏆 استبدل ${redeemable} نقطة`, description: `خصم إضافي على طلبك` });
   }
   couponRows.push({ id: "BACK_CART", title: "🔙 تعديل السلة", description: "العودة لتعديل مشترياتك" });
+
+  // عنوان السؤال يتكيف حسب الميزات المفعلة
+  let question;
+  if (couponsEnabled && pointsEnabled)      question = "هل لديك كود خصم أو تريد استبدال نقاطك؟";
+  else if (couponsEnabled)                  question = "هل لديك كود خصم؟";
+  else if (pointsEnabled)                   question = "هل تريد استبدال نقاطك؟";
 
   return sendList(from, {
     body:
       `🛍️ *تأكيد الطلب*\n\n` +
       `إجمالي السلة: *${subtotal.toFixed(2)} ${currency}*\n` +
-      (pts.points > 0 ? `🏆 رصيد نقاطك: *${pts.points}* نقطة\n` : "") +
-      `\nهل لديك كود خصم أو تريد استبدال نقاطك؟`,
+      (pts.points > 0 && pointsEnabled ? `🏆 رصيد نقاطك: *${pts.points}* نقطة\n` : "") +
+      `\n${question}`,
     buttonText: "اختر",
-    sections:   [{ title: "خيارات الخصم", rows: couponRows }],
-    footer:     "أو اكتب كود الخصم مباشرة",
+    sections:   [{ title: couponsEnabled ? "خيارات الخصم" : "خيارات النقاط", rows: couponRows }],
+    footer:     couponsEnabled ? "أو اكتب كود الخصم مباشرة" : "",
   });
 }
 
@@ -960,6 +2083,11 @@ async function handleCouponStep(from, msg, session) {
   const { store, storeId } = storeCtx.getStore() || {};
   const currency  = store?.currency || CURRENCY;
   const subtotal  = (session.cart || []).reduce((s, i) => s + i.price * i.qty, 0);
+
+  // ── Cart navigation from old polls (user tapped a cart action while coupon shown) ──
+  if (msg === "CONTINUE") { sessionManager.update(from, { step: "CATEGORY", couponWaiting: false }); return sendCategoryMenu(from); }
+  if (msg === "VIEW_CART") { sessionManager.update(from, { step: "CART_ACTION", couponWaiting: false }); return showCart(from, sessionManager.get(from)); }
+  if (msg === "BACK_PROD") { sessionManager.update(from, { step: "PRODUCT",    couponWaiting: false }); return showProductsPage(from, session.currentCategory || "", session.currentPage || 0); }
 
   // Skip coupon → proceed to collect name
   if (msg === "COUPON_SKIP") {
@@ -981,13 +2109,14 @@ async function handleCouponStep(from, msg, session) {
 
   // Redeem loyalty points
   if (msg === "POINTS_REDEEM") {
-    const pts = getPoints(from);
-    const redeemable = Math.floor(pts.points / 100) * 100;
-    if (redeemable < 100) {
+    const pts = getPoints(storeId, from);
+    const _loySet2 = require("./loyalty").getSettings(store);
+    const redeemable = Math.floor(pts.points / _loySet2.pointsForDiscount) * _loySet2.pointsForDiscount;
+    if (redeemable < _loySet2.pointsForDiscount) {
       sessionManager.update(from, { step: "COLLECT_NAME" });
       return sendButtons(from, { body: "❌ نقاطك غير كافية للاستبدال.\n\n📝 *اكتب اسمك الكريم* لإكمال الطلب:", buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }] });
     }
-    const result = redeemPoints(from, redeemable);
+    const result = redeemPoints(storeId, from, redeemable, store);
     if (!result) {
       sessionManager.update(from, { step: "COLLECT_NAME" });
       return sendButtons(from, { body: "❌ تعذّر استبدال النقاط.\n\n📝 *اكتب اسمك الكريم* لإكمال الطلب:", buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }] });
@@ -1044,9 +2173,17 @@ async function handleCouponStep(from, msg, session) {
 
 async function handleCollectName(from, msg, session) {
   const name = msg.trim().slice(0, 80);
-  if (name.length < 2) {
+  const isFreeText = session.path === "ai" || session.path === "numeric";
+  // رفض: gibberish، أسئلة شخصية، button IDs، أو أي شيء لا يبدو اسماً
+  if (!isValidName(name) || /^[A-Z][A-Z0-9_]*$/.test(name)) {
+    const hint = isOffTopicQuery(name)
+      ? "🤖 *لاحظت أن هذا سؤال!*\n\nأنا بوت لاستقبال الطلبات فقط. من فضلك اكتب اسمك الكريم لإكمال طلبك 😊"
+      : isGibberish(name)
+        ? "🤔 *هذا لا يبدو اسماً صحيحاً!*\n\nمن فضلك *اكتب اسمك الكريم* لإكمال الطلب 😊"
+        : "📝 *إتمام الطلب*\n\nمن فضلك *اكتب اسمك الكريم* لإكمال الطلب 😊";
+    if (isFreeText) return sendText(from, hint);
     return sendButtons(from, {
-      body:    "❌ من فضلك أرسل اسماً صحيحاً (حرفان على الأقل).",
+      body:    hint,
       buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }],
     });
   }
@@ -1059,85 +2196,169 @@ async function handleCollectName(from, msg, session) {
   // pickup & walkin: skip location step entirely
   if (!labels.needsLocation) {
     sessionManager.update(from, { step: "SCHEDULE_ORDER" });
-    return sendButtons(from, {
-      body:    `شكراً ${name} 😊\n\nمتى تريد ${labels.timeLabel}؟`,
-      buttons: [
-        { id: "SCHED_NOW",  title: "⚡ الآن" },
-        { id: "SCHED_TIME", title: "🕐 وقت محدد" },
-        { id: "BACK_CART",  title: "🔙 تعديل الطلب" },
-      ],
-    });
+    return sendScheduleAsk(from, `شكراً ${name} 😊`);
   }
 
   sessionManager.update(from, { step: "COLLECT_LOCATION" });
-  return sendButtons(from, {
-    body:    `شكراً ${name} 😊\n\nالآن *${labels.locationPrompt}* 📍\n\nيمكنك:\n• كتابة اسم الحي أو العنوان\n• أو مشاركة موقعك من واتساب 📌`,
-    buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }],
-  });
+  return sendText(from,
+    `شكراً ${name} 😊\n\n📍 *${labels.locationPrompt}*\n\n` +
+    `🗺️ *الطريقة الأسرع:* أرسل موقعك من واتساب\n` +
+    `   اضغط 📎 (أو ➕) ← *الموقع* ← *موقعي الحالي*\n\n` +
+    `أو اكتب اسم الحي / العنوان كنص 👇\n\n` +
+    `_اكتب *"تعديل"* للعودة للسلة_`
+  );
 }
 
 function isValidLocation(text) {
   if (!text || text.trim().length < 3) return false;
   if (/maps\.google\.com|goo\.gl\/maps|maps\.app\.goo\.gl|google\.com\/maps/.test(text)) return true;
   if (text.startsWith("📍")) return true;
-  return text.trim().length >= 5;
+  // الحد الأدنى = 3 حروف (لقبول أسماء قصيرة مثل "جدة" أو "الرياض")
+  return text.trim().length >= 3;
 }
 
 async function handleCollectLocation(from, msg, session) {
-  const location = msg.trim().slice(0, 500);
-  if (!isValidLocation(location)) {
-    return sendButtons(from, {
-      body:    "❌ من فضلك أرسل عنوانك أو مكان الاستلام، أو شارك موقعك من واتساب.",
-      buttons: [{ id: "BACK_CART", title: "🔙 تعديل السلة" }],
+  let location = msg.trim().slice(0, 500);
+
+  // إذا العميل أرسل ملاحظات بعد ما طلبناها — تُلحَق بالاسم لا تستبدله
+  if (session.awaitingLocationNote && location && !location.startsWith("📍|") && msg !== "LOC_SKIP_NOTE") {
+    const baseName = session.customerLocationName || "";
+    const lat = session.customerLocationLat;
+    const lng = session.customerLocationLng;
+    const mapsUrl = (lat && lng) ? `https://maps.google.com/?q=${lat},${lng}` : "";
+    const combinedName = baseName ? `${baseName} — ${location}` : location;
+    const finalLoc = mapsUrl ? `${combinedName} (📍 ${mapsUrl})` : combinedName;
+    sessionManager.update(from, {
+      step: "SCHEDULE_ORDER",
+      customerLocation: finalLoc,
+      customerLocationName: combinedName,
+      customerLocationNote: location,
+      awaitingLocationNote: false,
     });
+    await sendText(from, `✅ تم تسجيل الملاحظة:\n_${location}_`);
+    return sendScheduleAsk(from);
+  }
+
+  // ✅ زر "تأكيد بدون ملاحظة"
+  if (msg === "LOC_CONFIRM" || msg === "LOC_SKIP_NOTE") {
+    sessionManager.update(from, { step: "SCHEDULE_ORDER", awaitingLocationNote: false });
+    return sendScheduleAsk(from);
+  }
+
+  // 📍 رسالة موقع مشاركة من واتساب — نحوّل الإحداثيات لاسم مفهوم
+  if (location.startsWith("📍|")) {
+    const resolved = await resolveSharedLocation(location);
+    if (resolved) {
+      const mapsUrl = `https://maps.google.com/?q=${resolved.lat},${resolved.lng}`;
+      const finalLoc = `${resolved.name} (📍 ${mapsUrl})`;
+      sessionManager.update(from, {
+        step: "COLLECT_LOCATION",
+        customerLocation: finalLoc,
+        customerLocationLat: resolved.lat,
+        customerLocationLng: resolved.lng,
+        customerLocationName: resolved.name,
+        awaitingLocationNote: true,
+      });
+      return sendButtons(from, {
+        body: `📍 *موقعك مُسجَّل:*\n*${resolved.name}*\n\nتريد إضافة *ملاحظات* لمساعدة السائق؟\n(مثال: أمام محل البقالة، بجانب الجامع، علامة مميزة)`,
+        buttons: [
+          { id: "LOC_NOTE",      title: "📝 إضافة ملاحظة" },
+          { id: "LOC_SKIP_NOTE", title: "✅ متابعة بدون" },
+        ],
+      });
+    }
+  }
+
+  // 📝 زر "إضافة ملاحظة" — يطلب من العميل كتابتها
+  if (msg === "LOC_NOTE") {
+    sessionManager.update(from, { awaitingLocationNote: true });
+    return sendText(from, `📝 *اكتب ملاحظات الموقع:*\n\nأمثلة:\n• "أمام محل العثيم"\n• "بجانب جامع الفهد، الباب الأخضر"\n• "الفيلا البيضاء عند الإشارة"\n• "الدور الثاني، شقة 5"`);
+  }
+
+  // "تعديل" / "رجوع" → عودة للسلة
+  if (isEditIntent(location)) {
+    return showCart(from, sessionManager.get(from));
+  }
+  // رفض: gibberish أو أسئلة شخصية
+  if (isOffTopicQuery(location)) {
+    return sendText(from,
+      "🤖 *لاحظت أن هذا سؤال!*\n\nأنا بوت لاستقبال الطلبات فقط. من فضلك *أرسل موقعك* (📎 → الموقع) أو اكتب اسم الحي 📍\n\n" +
+      `_أو اكتب *"تعديل"* للعودة للسلة_`
+    );
+  }
+  if (isGibberish(location)) {
+    return sendText(from,
+      "🤔 *العنوان غير واضح!*\n\n🗺️ *الأسهل:* أرسل موقعك (📎 → الموقع → موقعي الحالي)\nأو اكتب اسم الحي بشكل واضح 📍\n\n" +
+      `_أو اكتب *"تعديل"* للعودة للسلة_`
+    );
+  }
+  // Reject invalid locations (button IDs أو طول غير معقول)
+  if (!isValidLocation(location) || /^[A-Z][A-Z0-9_]*$/.test(location)) {
+    return sendText(from,
+      "📍 *العنوان مطلوب*\n\n🗺️ *الأسهل:* أرسل موقعك من واتساب (📎 → الموقع)\nأو اكتب اسم الحي 📌\n\n" +
+      `_أو اكتب *"تعديل"* للعودة للسلة_`
+    );
   }
 
   sessionManager.update(from, { step: "SCHEDULE_ORDER", customerLocation: location });
+  return sendScheduleAsk(from);
+}
 
-  return sendButtons(from, {
-    body:   `✅ *تم تسجيل العنوان*\n\n${location}\n\nمتى تريد الاستلام؟`,
-    buttons: [
-      { id: "SCHED_NOW",  title: "⚡ الآن" },
-      { id: "SCHED_TIME", title: "🕐 وقت محدد" },
-      { id: "BACK_CART",  title: "🔙 تعديل الطلب" },
-    ],
-  });
+// نص موحد لطلب الوقت — دائماً كتابة حرة بدون buttons
+async function sendScheduleAsk(from, prefix = "") {
+  const { store } = storeCtx.getStore() || {};
+  const { timeLabel } = businessLabels(getBusinessType(store));
+  return sendText(from,
+    (prefix ? prefix + "\n\n" : "") +
+    `🕐 *متى تريد ${timeLabel}؟*\n\n` +
+    `اكتب الوقت المطلوب — أمثلة:\n` +
+    `• *الآن* (للاستلام الفوري)\n` +
+    `• *بعد 30 دقيقة*\n` +
+    `• *بعد ساعة*\n` +
+    `• *7:30 مساء*\n` +
+    `• *9 صباحاً*\n\n` +
+    `_أو اكتب *"تعديل"* للعودة وتعديل السلة_`
+  );
 }
 
 async function handleScheduleOrder(from, msg, session) {
-  const { store } = storeCtx.getStore() || {};
-  const { timeLabel } = businessLabels(getBusinessType(store));
+  const trimmed = String(msg || "").trim();
 
-  if (msg === "SCHED_NOW") {
+  // أي صياغة تشير لـ "تعديل/تغيير/رجوع" → عودة للسلة
+  if (isEditIntent(trimmed)) {
+    return showCart(from, sessionManager.get(from));
+  }
+
+  // "الآن" / "now" → استلام فوري
+  if (/^(الآن|الان|الأن|now|⚡|فور(اً|ا))$/i.test(trimmed)) {
     sessionManager.update(from, { scheduledTime: null });
     return showOrderSummary(from, sessionManager.get(from));
   }
-  if (msg === "SCHED_TIME") {
-    sessionManager.update(from, { step: "COLLECT_TIME" });
-    return sendList(from, {
-      body:       `🕐 *متى تريد ${timeLabel}؟*\n\nاختر وقتاً سريعاً أو اكتب الوقت بنفسك:`,
-      buttonText: "اختر الوقت",
-      sections: [{
-        title: `أوقات ${timeLabel}`,
-        rows: [
-          { id: "TIME_30",   title: "⏱️ بعد 30 دقيقة",   description: "أقرب وقت متاح" },
-          { id: "TIME_60",   title: "⏱️ بعد ساعة",        description: "" },
-          { id: "TIME_90",   title: "⏱️ بعد ساعة ونصف",  description: "" },
-          { id: "TIME_120",  title: "⏱️ بعد ساعتين",      description: "" },
-          { id: "BACK_SCHED",title: "🔙 رجوع",             description: "" },
-        ],
-      }],
-      footer: "أو اكتب الوقت مثل: 7:30 مساء",
-    });
+
+  // رفض: gibberish أو أسئلة شخصية
+  if (isOffTopicQuery(trimmed)) {
+    return sendScheduleAsk(from, "🤖 لاحظت أن هذا سؤال — أحتاج فقط وقت الاستلام.");
   }
-  return sendButtons(from, {
-    body:    `متى تريد ${timeLabel}؟`,
-    buttons: [
-      { id: "SCHED_NOW",  title: "⚡ الآن" },
-      { id: "SCHED_TIME", title: "🕐 وقت محدد" },
-      { id: "BACK_CART",  title: "🔙 تعديل الطلب" },
-    ],
-  });
+  if (isGibberish(trimmed)) {
+    return sendScheduleAsk(from, "🤔 لم أفهم الوقت — حاول مرة أخرى.");
+  }
+
+  // محاولة 1: rule-based parser (سريع)
+  let parsed = orderScheduler.parseArabicTime(trimmed);
+
+  // محاولة 2: AI fallback لو فشل rule-based (للعامية المعقدة)
+  if (!parsed) {
+    try { parsed = await aiParser.aiParseTime(trimmed); }
+    catch (e) { console.warn("[ai-parse-time] failed:", e.message); }
+  }
+
+  if (parsed) {
+    sessionManager.update(from, { scheduledTime: trimmed });
+    return showOrderSummary(from, sessionManager.get(from));
+  }
+
+  // لم يُفهم حتى مع AI → نعيد طلب الوقت
+  return sendScheduleAsk(from, "❌ لم أفهم الوقت.");
 }
 
 async function handleCollectTime(from, msg, session) {
@@ -1226,6 +2447,17 @@ async function showOrderSummary(from, session) {
     console.error("Summary image error:", err.message);
   }
 
+  // AI/Numeric: نص حر بدل buttons
+  if (session.path === "ai" || session.path === "numeric") {
+    return sendText(from,
+      invoice +
+      `\n\n━━━━━━━━━━\n` +
+      `اكتب *"تأكيد"* لإتمام الطلب ✅\n` +
+      `أو *"تعديل"* لتعديل الطلب ✏️\n` +
+      `أو *"إلغاء"* لإلغاء الطلب ❌`
+    );
+  }
+
   return sendButtons(from, {
     body:    invoice,
     buttons: [
@@ -1237,6 +2469,18 @@ async function showOrderSummary(from, session) {
 }
 
 async function handleConfirmOrder(from, msg, session) {
+  // قبول الكلمات النصية في AI/Numeric mode
+  const trimmed = String(msg || "").trim();
+  if (session.path === "ai" || session.path === "numeric") {
+    if (/^(تأكيد|اكد|أكد|نعم|تمام|اوكي|اوك|confirm|yes|ok)$/i.test(trimmed)) {
+      msg = "CONFIRM_YES";
+    } else if (/^(تعديل|عدل|رجوع|edit|back)$/i.test(trimmed)) {
+      msg = "BACK_CART";
+    } else if (/^(إلغاء|الغاء|الغ|لا|cancel|no)$/i.test(trimmed)) {
+      msg = "CONFIRM_NO";
+    }
+  }
+
   if (msg === "CONFIRM_YES") {
     const { store, storeId } = storeCtx.getStore() || {};
     const currency  = store?.currency || CURRENCY;
@@ -1250,7 +2494,15 @@ async function handleConfirmOrder(from, msg, session) {
     const subtotal  = Math.max(0, rawSubtotal - discount);
     const orderId   = `ORD-${Date.now().toString().slice(-7)}`;
 
+    // خصم المخزون تلقائياً (يتجاهل المنتجات ذات stock=null)
+    decrementStock(storeId, session.cart || []);
+
     sessionManager.update(from, { step: "DONE", orderId });
+
+    // إذا العميل شارك موقعه، نُولّد رابط Google Maps الجاهز لصفحة الأدمن
+    const mapsUrl = (session.customerLocationLat && session.customerLocationLng)
+      ? `https://maps.google.com/?q=${session.customerLocationLat},${session.customerLocationLng}`
+      : null;
 
     logOrder({
       orderId,
@@ -1260,6 +2512,11 @@ async function handleConfirmOrder(from, msg, session) {
       invoiceLogoUrl:   store?.invoiceLogoUrl || null,
       customerName:     session.customerName,
       customerLocation: session.customerLocation,
+      // الحقول الجغرافية الإضافية لصفحة الأدمن (تسهّل التوصيل)
+      customerLocationName: session.customerLocationName || null,
+      customerLocationLat:  session.customerLocationLat || null,
+      customerLocationLng:  session.customerLocationLng || null,
+      customerLocationMapsUrl: mapsUrl,
       customerPhone:    phoneNum(from),
       items:            session.cart,
       subtotal, deliveryFee: fee, total: session.grandTotal, currency,
@@ -1272,15 +2529,16 @@ async function handleConfirmOrder(from, msg, session) {
 
     // Mark coupon as used
     if (session.appliedCoupon) {
-      try { useCoupon(session.appliedCoupon, from); } catch {}
+      try { useCoupon(session.appliedCoupon, from); }
+      catch (e) { console.warn("[coupon-use] failed:", e.message); }
     }
 
     if (hasFeature(store?.plan, "customerRegistry")) {
-      upsertCustomer({ phone: phoneNum(from), name: session.customerName, location: session.customerLocation, total: session.grandTotal });
+      upsertCustomer({ phone: phoneNum(from), name: session.customerName, location: session.customerLocation, total: session.grandTotal, storeId });
     }
 
     // Award loyalty points
-    const earned = addPoints(from, session.grandTotal, orderId);
+    const earned = addPoints(storeId, from, session.grandTotal, orderId, store);
     const storeName = store?.storeName || STORE_NAME;
 
     await sendText(from,
@@ -1292,16 +2550,29 @@ async function handleConfirmOrder(from, msg, session) {
       `شكراً لاختيارك *${storeName}* 💚`
     );
 
-    // Owner WhatsApp notification
+    // Owner WhatsApp notification — يتضمن رابط Google Maps مباشر للتوصيل
     const ownerPhone = store?.ownerPhone;
     if (ownerPhone && storeId) {
       const orderLines = (session.cart || []).map(i => `• ${i.name} ×${i.qty}`).join("\n");
+      // ننظف اسم العنوان من أي رابط legacy
+      const locationName = (session.customerLocationName || session.customerLocation || "")
+        .replace(/\s*\(📍\s*https?:\/\/[^)]+\)/g, "").trim();
+      // رابط Maps من الإحداثيات لو متوفر
+      const ownerMapsUrl = (session.customerLocationLat && session.customerLocationLng)
+        ? `https://maps.google.com/?q=${session.customerLocationLat},${session.customerLocationLng}`
+        : null;
+      const locationBlock = locationName
+        ? (ownerMapsUrl
+            ? `📍 العنوان: *${locationName}*\n🗺️ خرائط: ${ownerMapsUrl}\n`
+            : `📍 العنوان: ${locationName}\n`)
+        : "";
+
       const ownerMsg =
         `🔔 *طلب جديد — ${storeName}*\n\n` +
         `رقم الطلب: *${orderId}*\n` +
         `العميل: *${session.customerName}*\n` +
         `الهاتف: ${phoneNum(from)}\n` +
-        (session.customerLocation ? `العنوان: ${session.customerLocation}\n` : "") +
+        locationBlock +
         (session.scheduledTime ? `⏰ ${labels.timeLabel}: *${session.scheduledTime}*\n` : "") +
         `\n${orderLines}\n\n` +
         `──────────\n` +
@@ -1321,7 +2592,8 @@ async function handleConfirmOrder(from, msg, session) {
         });
       }
       const ownerJid = ownerPhone.replace(/\D/g, "") + "@s.whatsapp.net";
-      try { await waMgr.sendMessage(storeId, ownerJid, ownerMsg); } catch {}
+      try { await waMgr.sendMessage(storeId, ownerJid, ownerMsg); }
+      catch (e) { console.warn("[owner-notify] failed:", e.message); }
     }
 
     // Generate + send invoice image
@@ -1329,9 +2601,10 @@ async function handleConfirmOrder(from, msg, session) {
       try {
         const { filePath } = await generateInvoiceImage({
           orderId, storeName,
-          invoiceColor:  store?.invoiceColor || "#1b5e20",
-          invoiceLogoUrl: store?.invoiceLogoUrl || null,
-          customerName:  session.customerName,
+          invoiceColor:    store?.invoiceColor || "#1b5e20",
+          invoiceLogoUrl:  store?.invoiceLogoUrl || null,
+          invoiceTemplate: store?.invoiceTemplate || "classic",
+          customerName:    session.customerName,
           customerLocation: session.customerLocation,
           items: session.cart, subtotal, deliveryFee: fee, total: session.grandTotal, currency,
           date: new Date().toISOString().slice(0, 10),
@@ -1348,7 +2621,8 @@ async function handleConfirmOrder(from, msg, session) {
 
     // Schedule rating request after 5 minutes; auto-expire entry 30 min after request is sent
     const ratingTimer = setTimeout(async () => {
-      try { await waMgr.sendMessage(storeId, from, ratingRequestMessage(storeName, orderId)); } catch {}
+      try { await waMgr.sendMessage(storeId, from, ratingRequestMessage(storeName, orderId)); }
+      catch (e) { console.warn("[rating-request] failed:", e.message); }
       setTimeout(() => { pendingRatings.delete(from); }, 30 * 60 * 1000);
     }, 5 * 60 * 1000);
     pendingRatings.set(from, { storeId, orderId, storeName, timer: ratingTimer });
@@ -1362,6 +2636,16 @@ async function handleConfirmOrder(from, msg, session) {
     return sendText(from, "تم إلغاء الطلب. نتمنى أن نخدمك مرة أخرى قريباً 😊");
   }
 
+  // AI/Numeric: نص حر للتذكير
+  if (session.path === "ai" || session.path === "numeric") {
+    return sendText(from,
+      (session.pendingInvoice || "🧾 طلبك بانتظار التأكيد") +
+      `\n\n━━━━━━━━━━\n` +
+      `اكتب *"تأكيد"* لإتمام الطلب ✅\n` +
+      `أو *"تعديل"* لتعديل الطلب ✏️\n` +
+      `أو *"إلغاء"* لإلغاء الطلب ❌`
+    );
+  }
   return sendButtons(from, {
     body:    session.pendingInvoice || "🧾 طلبك بانتظار التأكيد",
     buttons: [
@@ -1387,7 +2671,7 @@ async function handleRatingSubmit(from, ratingText) {
   const rating = parseInt(ratingText);
   try {
     saveRating({ storeId: pending.storeId, phone: from, orderId: pending.orderId, rating });
-  } catch {}
+  } catch (e) { console.warn("[save-rating] failed:", e.message); }
 
   const stars = ["","⭐","⭐⭐","⭐⭐⭐","⭐⭐⭐⭐","⭐⭐⭐⭐⭐"][rating] || "⭐⭐⭐";
   try {
@@ -1464,9 +2748,10 @@ waMgr.setMessageHandler(async (storeId, from, text, rawMsg) => {
     );
     return;
   }
-  // Try slots (try_1..try_5) + legacy owner_try — use first active store as demo config
+  // Try slots (try_1..try_5) + legacy owner_try — use first active store WITH products as demo
   if (storeId === "owner_try" || /^try_\d+$/.test(storeId)) {
-    const demoStore = getAllStores().find(s => s.active && s.subscriptionStatus === "active") || null;
+    const stores  = getAllStores().filter(s => s.active && s.subscriptionStatus === "active");
+    const demoStore = stores.find(s => (s.products || []).length > 0) || stores[0] || null;
     await storeCtx.run({ storeId, store: demoStore }, async () => {
       await handleMessage(from, text);
     });
@@ -1483,8 +2768,1350 @@ waMgr.setMessageHandler(async (storeId, from, text, rawMsg) => {
   });
 });
 
+// ─── Groq AI Poll Fallback ────────────────────────────────────────────────────
+// عندما يفشل فك تشفير التصويت، Groq يحدد الخيار الأكثر احتمالاً بناءً على السياق
+waMgr.setPollFallback(async (storeId, from, pollData) => {
+  const GROQ_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_KEY) return null;
+
+  const session   = sessionManager.get(from);
+  const options   = pollData.options.map(o => o.optionName).filter(Boolean);
+  const valueToId = pollData.valueToId;
+
+  const cartSummary = session?.cart?.length
+    ? session.cart.map(i => `${i.name}×${i.qty}`).join("، ")
+    : "فارغة";
+  const optionsList = options.map((o, i) => `${i + 1}. ${o}`).join("\n");
+  const hasAddMore  = options.some(o => /إضافة|متابعة|صنف آخر/u.test(o));
+  const prompt = [
+    `أنت مساعد بوت طلبات واتساب. العميل صوّت في استطلاع ولم نتمكن من فك تشفيره.`,
+    ``,
+    `السياق:`,
+    `- الخطوة: ${session?.step || "MAIN_MENU"}`,
+    `- السلة: ${cartSummary}`,
+    ``,
+    `خيارات الاستطلاع:`,
+    optionsList,
+    ``,
+    `قاعدة مهمة: إذا كانت الخيارات تتضمن "إضافة" أو "صنف آخر"${hasAddMore ? " (وهو موجود هنا)" : ""}، فلا تخمّن خيار "إتمام الطلب" ما لم يكن الخيار الوحيد المنطقي.`,
+    `أجب بنص الخيار بالضبط كما هو مكتوب أعلاه فقط، لا تضف شيئاً.`,
+  ].join("\n");
+
+  try {
+    const res  = await axios.post("https://api.groq.com/openai/v1/chat/completions", {
+      model:    "llama-3.1-8b-instant",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 30,
+      temperature: 0,
+    }, { headers: { Authorization: `Bearer ${GROQ_KEY}`, "Content-Type": "application/json" } });
+
+    const answer = res.data.choices?.[0]?.message?.content?.trim();
+    console.log(`🤖 [poll-ai] storeId=${storeId} from=${from} guess="${answer}"`);
+
+    // طابق إجابة Groq مع الخيارات الموجودة (مرن)
+    const matched = options.find(o => o === answer)
+      || options.find(o => answer?.includes(o))
+      || options.find(o => o.includes(answer || ""));
+    if (matched) return valueToId[matched] || null;
+  } catch (e) {
+    console.warn(`[poll-ai] failed: ${e.message}`);
+  }
+  return null;
+});
+
 // ─── Pairing API (used by master panel) ──────────────────────────────────────
 // Note: actual endpoints in master-router.js call waMgr directly
+
+// ─── Native List Order Menu ────────────────────────────────────────────────────
+async function sendTextOrderMenu(from) {
+  const demo = demoCtx.getStore();
+  const { store, storeId } = storeCtx.getStore() || {};
+  if (!store) return;
+
+  const products = (store.products || []).filter(isProductInStock);
+  if (!products.length) return sendText(from, "❌ لا توجد منتجات متاحة حالياً.");
+
+  const cats     = (store.categories || []).filter(cat => products.some(p => p.category === cat.id));
+  const currency = store.currency || CURRENCY;
+  const prodMap  = {};
+
+  // بناء sections للـ native list
+  const sections = [];
+  if (cats.length > 0) {
+    for (const cat of cats) {
+      const catProds = products.filter(p => p.category === cat.id);
+      if (!catProds.length) continue;
+      sections.push({
+        title: `${cat.emoji || "◆"} ${cat.name}`,
+        rows:  catProds.map(p => {
+          prodMap[String(p.id)] = p;
+          return {
+            id:          `PROD_${p.id}`,
+            title:       p.name,
+            description: `${p.price} ${currency}${p.description ? " • " + p.description : ""}`,
+          };
+        }),
+      });
+    }
+  } else {
+    sections.push({
+      title: `🛍️ ${store.storeName || "المنتجات"}`,
+      rows:  products.map(p => {
+        prodMap[String(p.id)] = p;
+        return {
+          id:          `PROD_${p.id}`,
+          title:       p.name,
+          description: `${p.price} ${currency}${p.description ? " • " + p.description : ""}`,
+        };
+      }),
+    });
+  }
+
+  if (demo) {
+    const opts = sections.flatMap(s => s.rows).map(r => `• ${r.title} — ${r.description}`).join("\n");
+    demo.buffer.push({ type: "text", body: `🛍️ قائمة ${store.storeName || "متجرنا"}:\n\n${opts}` });
+    return;
+  }
+
+  sessionManager.update(from, { step: "ORDER_BROWSE", cart: [], orderProdMap: prodMap });
+
+  // ── CTA: زر يفتح صفحة الطلب الكاملة داخل واتساب ──
+  const orderToken = waMgr.createWebOrderToken(storeId, from);
+  const orderUrl   = `${process.env.PUBLIC_URL}/${orderToken}`;
+  const storeName  = store.storeName || "متجرنا";
+
+  const logoUrl  = store.logoUrl
+    ? (store.logoUrl.startsWith("http") ? store.logoUrl : `${(process.env.PUBLIC_URL||"").replace(/\/$/,"")}${store.logoUrl}`)
+    : "";
+
+  const ctaSent = await waMgr.sendCtaButton(storeId, from, {
+    body:         `🛍️ *${storeName}*\n\nاضغط الزر لفتح قائمة المنتجات واختيار طلبك 👇`,
+    buttonText:   "🛒 اطلب الآن",
+    url:          orderUrl,
+    footer:       `${storeName} • ${products.length} منتج متاح`,
+    thumbnailUrl: logoUrl,
+  });
+
+  if (!ctaSent) {
+    // fallback: نص بسيط مع الرابط
+    await waMgr.sendMessage(storeId, from,
+      `🛍️ *${storeName}*\n\n` +
+      `اضغط لفتح قائمة الطلب:\n${orderUrl}\n\n` +
+      `_⏰ الرابط صالح 15 دقيقة_`
+    );
+  }
+}
+
+async function handleOrderBrowse(from, msg, session) {
+  const { store } = storeCtx.getStore() || {};
+  const currency  = store?.currency || CURRENCY;
+  const prodMap   = session.orderProdMap || {};
+  const cart      = session.cart || [];
+  const maxIdx    = Object.keys(prodMap).length;
+
+  // تأكيد الطلب
+  if (/^(تأكيد|confirm|تم|اكمل|أكمل|تمام|موافق|نعم|yes|ok)$/i.test(msg.trim())) {
+    if (!cart.length) {
+      return sendText(from, `❌ سلتك فارغة!\n\nأرسل رقم المنتج (1–${maxIdx}) لإضافته.`);
+    }
+    const total   = cart.reduce((s, i) => s + i.price * i.qty, 0);
+    const summary = `✅ *تأكيد طلبك:*\n\n` +
+      cart.map(i => `• ${i.name} × ${i.qty} — ${(i.price * i.qty).toFixed(2)} ${currency}`).join("\n") +
+      `\n\n💰 *المجموع: ${total.toFixed(2)} ${currency}*\n\n` +
+      `📝 *اكتب اسمك الكريم* لإتمام الطلب:`;
+    sessionManager.update(from, { step: "COLLECT_NAME", orderProdMap: undefined });
+    return sendText(from, summary);
+  }
+
+  // تعديل السلة / حذف عنصر
+  if (msg.trim() === "CLEAR_CART") {
+    sessionManager.update(from, { cart: [] });
+    return sendTextOrderMenu(from);
+  }
+
+  // استجابة native list: PROD_<id>
+  let selectedProds = [];
+  if (msg.startsWith("PROD_")) {
+    const prodId = msg.replace("PROD_", "");
+    const prod   = prodMap[prodId];
+    if (prod) selectedProds = [prod];
+  }
+
+  // fallback: أرقام نصية
+  if (!selectedProds.length) {
+    const tokens = msg.trim().split(/[\s,،]+/);
+    const nums   = tokens.map(t => parseInt(t)).filter(n => !isNaN(n) && n >= 1 && n <= maxIdx);
+    selectedProds = nums.map(n => prodMap[n]).filter(Boolean);
+  }
+
+  if (!selectedProds.length) {
+    return sendButtons(from, {
+      body:    `❌ لم أفهم اختيارك\n\nأو اضغط زر التأكيد إذا انتهيت:`,
+      buttons: [
+        { id: "ORDER_CONFIRM", title: "✅ تأكيد الطلب" },
+        { id: "ORDER_MENU",    title: "📋 القائمة مجدداً" },
+      ],
+    });
+  }
+
+  // أضف للسلة
+  const newCart = [...cart];
+  for (const prod of selectedProds) {
+    const existing = newCart.find(i => String(i.id) === String(prod.id));
+    if (existing) {
+      existing.qty++;
+    } else {
+      newCart.push({ id: prod.id, name: prod.name, price: Number(prod.price) || 0, qty: 1, imageUrl: prod.imageUrl || null });
+    }
+  }
+
+  sessionManager.update(from, { cart: newCart });
+
+  const total    = newCart.reduce((s, i) => s + i.price * i.qty, 0);
+  const cartLine = newCart.map(i => `• ${i.name} × ${i.qty} — ${(i.price * i.qty).toFixed(2)} ${currency}`).join("\n");
+
+  await sendButtons(from, {
+    body:    `✅ *تمت الإضافة!*\n\n🛒 *سلتك:*\n${cartLine}\n\n💰 *المجموع: ${total.toFixed(2)} ${currency}*`,
+    buttons: [
+      { id: "ORDER_CONFIRM", title: "✅ تأكيد الطلب" },
+      { id: "ORDER_MENU",    title: "➕ إضافة منتج" },
+    ],
+    footer: `${newCart.length} منتج في السلة`,
+  });
+}
+
+// ─── Web Order System (legacy — kept for reference) ───────────────────────────
+async function sendWebOrderLink(from) {
+  const demo = demoCtx.getStore();
+  if (demo) {
+    demo.buffer.push({ type: "text", body: "🛍️ اضغط لفتح قائمة الطلب:\n[رابط الطلب الإلكتروني — متاح عند التشغيل الفعلي]" });
+    return;
+  }
+  const { store, storeId } = storeCtx.getStore() || {};
+  if (!storeId) return;
+  const token = waMgr.createWebOrderToken(storeId, from);
+  const url   = `${process.env.PUBLIC_URL}/${token}`;
+  await sendText(from,
+    `🛍️ *اختر من قائمة ${store?.storeName || "متجرنا"}!*\n\n` +
+    `👆 اضغط لفتح القائمة وإضافة ما تريد:\n${url}\n\n` +
+    `_⏰ الرابط صالح لمدة 15 دقيقة_`
+  );
+}
+
+// ─── Web Button System ────────────────────────────────────────────────────────
+function _esc(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+app.get("/c/:token", (req, res) => {
+  const sess = waMgr.getButtonSession(req.params.token);
+  if (!sess) {
+    return res.status(410).send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>انتهت الجلسة</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0f2f5;color:#333}</style></head><body><div style="text-align:center"><div style="font-size:56px">⏰</div><h2>انتهت صلاحية الرابط</h2><p style="color:#666">عد للمحادثة وأرسل أي رسالة للبوت</p></div></body></html>`);
+  }
+
+  const color   = _esc(sess.color || "#25d366");
+  const items   = sess.options.map(opt => {
+    const id    = _esc(opt.id);
+    const title = _esc(opt.title);
+    const desc  = opt.description ? `<span class="desc">${_esc(opt.description)}</span>` : "";
+    return `<button class="btn" data-id="${id}" data-title="${title}">${title}${desc}</button>`;
+  }).join("");
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="${color}">
+  <title>اختر</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#f0f2f5;min-height:100vh;display:flex;flex-direction:column;align-items:center}
+    .header{background:${color};width:100%;padding:18px 20px;text-align:center;color:#fff;font-size:17px;font-weight:700;letter-spacing:.3px}
+    .card{width:100%;max-width:480px;padding:14px 16px 24px;display:flex;flex-direction:column;gap:10px}
+    .btn{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:15px 18px;background:#fff;border:2px solid ${color};border-radius:14px;color:#222;font-size:16px;font-weight:600;cursor:pointer;text-align:right;transition:background .15s,color .15s,transform .1s;box-shadow:0 1px 6px rgba(0,0,0,.07)}
+    .btn:active,.btn.sel{background:${color};color:#fff;transform:scale(.97)}
+    .desc{display:block;font-size:13px;font-weight:400;margin-top:3px;opacity:.75}
+    #done{display:none;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;flex:1}
+    #done .icon{font-size:72px;margin-bottom:20px}
+    #done h2{font-size:22px;font-weight:700;color:${color};margin-bottom:8px}
+    #done p{font-size:14px;color:#888}
+  </style>
+</head>
+<body>
+  <div class="header">اختر من القائمة</div>
+  <div class="card" id="card">${items}</div>
+  <div id="done">
+    <div class="icon">✅</div>
+    <h2>تم الاختيار!</h2>
+    <p>جارٍ العودة للواتساب…</p>
+  </div>
+  <script>
+    const TOKEN = "${_esc(req.params.token)}";
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.classList.contains('sel')) return;
+        btn.classList.add('sel');
+        document.querySelectorAll('.btn').forEach(b => { if (b !== btn) { b.disabled = true; b.style.opacity = '.35'; } });
+        try {
+          await fetch('/api/c/' + TOKEN, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: btn.dataset.id })
+          });
+        } catch(e) {}
+        document.getElementById('card').style.display = 'none';
+        document.getElementById('done').style.display = 'flex';
+        setTimeout(() => {
+          try { window.history.back(); } catch(e) {}
+          setTimeout(() => { try { window.close(); } catch(e) {} }, 600);
+        }, 1200);
+      });
+    });
+  </script>
+</body>
+</html>`);
+});
+
+app.post("/api/c/:token", express.json(), async (req, res) => {
+  const sess = waMgr.getButtonSession(req.params.token);
+  if (!sess) return res.status(410).json({ ok: false, error: "expired" });
+
+  waMgr.clearButtonSession(req.params.token);
+
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ ok: false, error: "missing id" });
+
+  try {
+    const store = resolveStore(sess.storeId);
+    if (!store) return res.status(404).json({ ok: false });
+
+    res.json({ ok: true }); // respond immediately before processing
+
+    await storeCtx.run({ storeId: sess.storeId, store }, () =>
+      handleMessage(sess.userFrom, id)
+    );
+  } catch (e) {
+    console.error("[web-btn]", e.message);
+  }
+});
+
+// ─── Interactive Card Order Page (يستجيب لـ /:slug و /o/:token و /order/:token) ──
+// الـ /:slug للأقصر — pattern 5-12 chars من base62 فقط
+app.get(["/order/:token", "/o/:token", "/:token([a-zA-Z0-9]{4,12})"], (req, res) => {
+  const sess = waMgr.getWebOrderSession(req.params.token);
+  if (!sess) {
+    return res.status(410).send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="var(--bg)"><title>انتهت الجلسة</title><style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg);font-family:'Segoe UI',Tahoma,Arial,sans-serif;overflow:hidden}.box{text-align:center;padding:40px 24px;max-width:340px}.ico{font-size:72px;margin-bottom:18px;filter:drop-shadow(0 0 12px rgba(212,175,55,.3))}.h{font-size:20px;font-weight:800;color:var(--accent);margin-bottom:10px;letter-spacing:.3px}.p{font-size:14px;color:#888;line-height:1.7}.back{display:inline-block;margin-top:22px;background:var(--accent);color:#000;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}.back:active{opacity:.8}</style></head><body><div class="box"><div class="ico">⏰</div><div class="h">انتهت صلاحية الرابط</div><div class="p">الرابط صالح لـ 24 ساعة<br>عد للمحادثة وأرسل أي رسالة للبوت</div><a class="back" href="#" onclick="try{window.history.back();}catch(e){}try{window.close();}catch(e){}">💬 العودة للمحادثة</a></div></body></html>`);
+  }
+
+  const store    = resolveStore(sess.storeId);
+  if (!store) return res.status(404).send("المتجر غير موجود");
+
+  const botPhone   = sess.botPhone || "";
+  const rawColor   = store.invoiceColor || "#1b5e20";
+  const rawAccent  = store.themeAccent  || "var(--accent)";
+  const menuMode   = store.menuMode === "light" ? "light" : "dark";
+  const color      = _esc(rawColor);
+  const accentColor = _esc(rawAccent);
+  const name       = _esc(store.storeName || "متجرنا");
+  const currency   = store.currency || CURRENCY;
+
+  // ── Theme palette: dark | light ──
+  const basePalette = menuMode === "light" ? {
+    bg:        "#ffffff",
+    bgAlt:     "#f9fafb",
+    bgHeader:  "#ffffff",
+    text:      "#1f2937",
+    textMute:  "#6b7280",
+    textDim:   "#9ca3af",
+    cardBg:    "#ffffff",
+    cardBgAlt: "#f3f4f6",
+    border:    "#e5e7eb",
+    borderDim: "#f3f4f6",
+    shadowOverlay: "rgba(0,0,0,.5)",
+  } : {
+    bg:        "#050505",
+    bgAlt:     "#080808",
+    bgHeader:  "#0e0e0e",
+    text:      "#f5f5f5",
+    textMute:  "#9a9a9a",
+    textDim:   "#666666",
+    cardBg:    "#121212",
+    cardBgAlt: "#161616",
+    border:    "#1f1f1f",
+    borderDim: "#262626",
+    shadowOverlay: "rgba(0,0,0,.85)",
+  };
+  // تخصيص ألوان النصوص من إعدادات المتجر (إن وُجدت)
+  const palette = {
+    ...basePalette,
+    text:     store.themeText     || basePalette.text,
+    textMute: store.themeTextMute || basePalette.textMute,
+  };
+  const products = (store.products || []).filter(isProductInStock);
+  const cats     = (store.categories || []).filter(cat => products.some(p => p.category === cat.id));
+
+  const productData = {};
+  products.forEach(p => {
+    productData[String(p.id)] = {
+      name:           p.name,
+      description:    p.description || "",
+      price:          Number(p.price) || 0,
+      imageUrl:       p.imageUrl ? (p.imageUrl.startsWith("http") ? p.imageUrl : `${(process.env.PUBLIC_URL||"").replace(/\/$/,"")}${p.imageUrl}`) : null,
+      categoryId:     String(p.category || ""),
+      subCategoryId:  String(p.subCategoryId || ""),
+      sizes:          Array.isArray(p.sizes) && p.sizes.length
+        ? p.sizes.map(s => ({ label: String(s.label || ""), price: Number(s.price) || 0 })).filter(s => s.label && s.price > 0)
+        : null,
+    };
+  });
+
+  // نقبل logoUrl أو invoiceLogoUrl (يُحفظ من tab الإعدادات في store-admin)
+  const rawLogo = store.logoUrl || store.invoiceLogoUrl || "";
+  const logoUrl = rawLogo
+    ? (rawLogo.startsWith("http") ? rawLogo : `${(process.env.PUBLIC_URL||"").replace(/\/$/,"")}${rawLogo}`)
+    : "";
+
+  const categoriesData = cats.length > 0
+    ? cats.map(c => ({
+        id:    String(c.id),
+        name:  c.name,
+        emoji: c.emoji || "◆",
+        items: products.filter(p => p.category === c.id).map(p => String(p.id)),
+        subCategories: Array.isArray(c.subCategories)
+          ? c.subCategories
+              .filter(s => s && s.id && s.active !== false)
+              .map(s => ({ id: String(s.id), name: String(s.name||""), emoji: String(s.emoji||"") }))
+          : [],
+      }))
+    : [{ id: "__all__", name: "المنتجات", emoji: "🛍️", items: products.map(p => String(p.id)), subCategories: [] }];
+
+  const token    = JSON.stringify(req.params.token);
+  const curr     = JSON.stringify(currency);
+  const pdata    = JSON.stringify(productData);
+  const cdata    = JSON.stringify(categoriesData);
+  const logoJ    = JSON.stringify(logoUrl);
+  const nameJ    = JSON.stringify(store.storeName || "متجرنا");
+  const colorJ   = JSON.stringify(rawColor);
+  const phoneJ   = JSON.stringify(botPhone);
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="${color}">
+<meta property="og:title" content="${name} — قائمة الطلب">
+<meta property="og:description" content="اضغط لاختيار طلبك الآن 🛒">
+<meta property="og:type" content="website">
+${logoUrl ? `<meta property="og:image" content="${_esc(logoUrl)}">` : ""}
+<title>${name} — قائمة الطلب</title>
+<style>
+:root{
+  --primary:${rawColor};
+  --accent:${rawAccent};
+  --bg:${palette.bg};
+  --bg-alt:${palette.bgAlt};
+  --bg-header:${palette.bgHeader};
+  --text:${palette.text};
+  --text-mute:${palette.textMute};
+  --text-dim:${palette.textDim};
+  --card-bg:${palette.cardBg};
+  --card-bg-alt:${palette.cardBgAlt};
+  --border:${palette.border};
+  --border-dim:${palette.borderDim};
+  --overlay:${palette.shadowOverlay};
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100vh;background:var(--bg);font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:var(--text);overflow-x:hidden}
+body{display:flex;flex-direction:column;padding-bottom:96px;min-width:320px}
+
+/* ـــ Sticky stack: يجمع كل الأشرطة العلوية في حاوية واحدة ـــ */
+.sticky-stack{position:sticky;top:0;z-index:50;background:var(--bg);box-shadow:0 2px 12px rgba(0,0,0,.35)}
+
+.hdr{
+  background:linear-gradient(180deg,var(--bg-alt) 0%,var(--bg-alt) 100%);
+  color:#fff;padding:14px 16px;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  border-bottom:1px solid var(--card-bg-alt);
+}
+.hdr-main{display:flex;align-items:center;gap:13px;min-width:0;flex:1}
+.hdr-logo{
+  width:56px;height:56px;border-radius:50%;object-fit:cover;
+  border:2.5px solid var(--accent);flex-shrink:0;
+  background:var(--card-bg);
+  box-shadow:0 0 20px rgba(212,175,55,.35), 0 2px 8px rgba(0,0,0,.35), inset 0 0 0 2px var(--bg-header);
+  animation:logoIn .5s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes logoIn{
+  from{transform:scale(.4) rotate(-10deg);opacity:0}
+  to{transform:scale(1) rotate(0);opacity:1}
+}
+.hdr-icon{
+  width:56px;height:56px;border-radius:50%;
+  background:linear-gradient(135deg,var(--border),var(--card-bg-alt));
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  flex-shrink:0;border:2px solid var(--border-dim);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 2px 8px rgba(0,0,0,.3);
+}
+.hdr-text{text-align:right;min-width:0;flex:1}
+.hdr-name{font-size:17px;font-weight:800;line-height:1.2;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
+.hdr-sub{font-size:11.5px;color:var(--accent);margin-top:4px;letter-spacing:.2px}
+.hdr-back{
+  background:var(--card-bg-alt);border:1px solid var(--border-dim);color:#999;
+  width:40px;height:40px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  cursor:pointer;flex-shrink:0;
+  transition:all .2s cubic-bezier(.4,0,.2,1);
+}
+.hdr-back:active{background:var(--border);color:var(--accent);transform:scale(.92)}
+
+/* Search bar */
+.search-bar{
+  background:var(--bg-alt);padding:11px 12px;border-bottom:1px solid var(--card-bg-alt);
+}
+.search-input{
+  width:100%;padding:12px 18px 12px 44px;
+  background:linear-gradient(180deg,#171717,var(--card-bg));
+  border:1.5px solid var(--border-dim);border-radius:24px;color:#eee;
+  font-size:14px;font-family:inherit;outline:none;direction:rtl;
+  transition:all .2s cubic-bezier(.4,0,.2,1);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.3);
+}
+.search-input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(212,175,55,.12), inset 0 1px 2px rgba(0,0,0,.3);
+}
+.search-input::placeholder{color:#555}
+.search-wrap{position:relative}
+.search-icon{
+  position:absolute;right:16px;top:50%;transform:translateY(-50%);
+  font-size:16px;color:#666;pointer-events:none;
+}
+
+.tabs{
+  display:flex;gap:8px;padding:11px 12px;overflow-x:auto;
+  background:var(--bg-alt);scrollbar-width:none;border-bottom:1px solid var(--card-bg-alt);
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  flex-shrink:0;padding:9px 18px;border-radius:24px;
+  border:1.5px solid var(--border-dim);
+  background:linear-gradient(180deg,var(--card-bg-alt),var(--bg-alt));
+  color:#999;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:all .25s cubic-bezier(.4,0,.2,1);letter-spacing:-.1px;
+}
+.tab:active{transform:scale(.95)}
+.tab.active{
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 100%);
+  border-color:var(--accent);color:#000;font-weight:800;
+  box-shadow:0 3px 10px rgba(212,175,55,.3), inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+/* ─── شريط التصنيفات الفرعية (chips صغيرة، scroll أفقي، snap) ─── */
+.sub-chips{
+  display:flex;gap:6px;padding:6px 12px 7px;overflow-x:auto;overflow-y:hidden;
+  background:var(--bg);scrollbar-width:none;border-bottom:1px solid var(--card-bg-alt);
+  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+}
+.sub-chips::-webkit-scrollbar{display:none}
+.chip{
+  flex-shrink:0;padding:4px 10px;border-radius:14px;
+  border:1px solid var(--border-dim);background:var(--card-bg);
+  color:var(--text-mute);font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;
+  transition:all .18s ease;scroll-snap-align:start;line-height:1.5;
+}
+.chip:active{transform:scale(.94)}
+.chip.active{
+  background:var(--accent);border-color:var(--accent);color:#000;font-weight:800;
+  box-shadow:0 2px 6px rgba(212,175,55,.25);
+}
+
+.cat-section{display:none}
+.cat-section.visible{display:block}
+.card.hidden-by-filter{display:none}
+.cat-label{
+  font-size:13px;font-weight:800;color:var(--accent);letter-spacing:.5px;
+  padding:18px 16px 6px;display:flex;align-items:center;gap:8px;
+}
+
+/* Grid: عمودان للهواتف المتوسطة (≥380px)، عمود واحد للأصغر */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:10px 10px 20px}
+@media (max-width: 379px){.grid{grid-template-columns:1fr;gap:12px;padding:10px 12px 20px}}
+@media (min-width: 600px){.grid{grid-template-columns:repeat(3,1fr);gap:14px;max-width:900px;margin:0 auto}}
+
+/* تقليص ارتفاع الـ header على الشاشات الصغيرة جداً */
+@media (max-width: 360px){
+  .hdr{padding:10px 12px;gap:8px}
+  .hdr-logo,.hdr-icon{width:44px;height:44px}
+  .hdr-icon{font-size:20px}
+  .hdr-name{font-size:15px}
+  .hdr-sub{font-size:10.5px}
+  .hdr-back{width:36px;height:36px;font-size:16px}
+  .search-input{font-size:13.5px;padding:10px 16px 10px 40px}
+  .tab{padding:7px 14px;font-size:13px}
+  .c-img{aspect-ratio:1/1}
+  .c-name{font-size:14px}
+  .c-price{font-size:14.5px}
+}
+
+.card{
+  background:linear-gradient(180deg,var(--card-bg) 0%,var(--bg-alt) 100%);
+  border-radius:18px;overflow:hidden;
+  border:1px solid var(--border);display:flex;flex-direction:column;
+  box-shadow:0 2px 8px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.02);
+  transition:border-color .25s,box-shadow .25s,transform .12s;
+}
+.card.has-qty{
+  border-color:var(--accent);
+  box-shadow:0 4px 16px rgba(212,175,55,.18), inset 0 1px 0 rgba(212,175,55,.08);
+}
+.c-img{width:100%;aspect-ratio:4/3;overflow:hidden;background:var(--card-bg-alt);flex-shrink:0;position:relative}
+.c-img::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 65%,rgba(0,0,0,.35) 100%);pointer-events:none}
+.c-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .4s ease}
+.card:hover .c-img img{transform:scale(1.04)}
+.no-img{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:42px;color:var(--border-dim)}
+.c-body{padding:13px 13px 14px;display:flex;flex-direction:column;gap:4px;flex:1}
+.c-name{font-size:15px;font-weight:800;color:#f5f5f5;line-height:1.3;letter-spacing:-.1px}
+.c-desc{font-size:12px;color:#6a6a6a;line-height:1.5;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.c-foot{margin-top:auto;padding-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cb-single{
+  background:var(--accent);color:#000;border:none;padding:9px 18px;
+  border-radius:24px;font-size:13.5px;font-weight:800;cursor:pointer;
+  font-family:inherit;transition:.18s;box-shadow:0 3px 10px rgba(212,175,55,.32);
+  white-space:nowrap
+}
+.cb-single:active{transform:scale(.96)}
+.cb-single.taken{background:#10b981;color:#fff;box-shadow:0 3px 10px rgba(16,185,129,.35)}
+.c-price{font-size:16px;font-weight:800;color:var(--accent);white-space:nowrap;letter-spacing:-.2px}
+
+/* أزرار +/− احترافية */
+.c-ctrl{
+  display:flex;align-items:center;gap:2px;
+  background:var(--card-bg-alt);border-radius:24px;padding:3px;
+  border:1px solid #232323;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.4);
+}
+.cb{
+  width:32px;height:32px;border-radius:50%;
+  border:none;background:transparent;color:#888;
+  font-size:18px;font-weight:600;line-height:1;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:all .18s cubic-bezier(.4,0,.2,1);
+  -webkit-user-select:none;user-select:none;position:relative;
+}
+.cb.plus{
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 100%);
+  color:#000;font-weight:800;
+  box-shadow:0 2px 6px rgba(212,175,55,.35), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.cb.plus:active{
+  transform:scale(.88);
+  box-shadow:0 1px 3px rgba(212,175,55,.5), inset 0 2px 4px rgba(0,0,0,.25);
+}
+.cb.minus{
+  background:#1d1d1d;color:#666;
+  border:1px solid var(--border-dim);
+}
+.cb.minus:not(.zero):active{
+  background:var(--border-dim);color:var(--accent);transform:scale(.88);
+}
+.cb.minus.zero{opacity:.4;pointer-events:none;border-color:#222;color:#3a3a3a}
+.cq{
+  font-size:15px;font-weight:800;min-width:24px;text-align:center;
+  color:#fff;transition:color .15s,transform .2s;
+}
+.cq.nz{
+  color:var(--accent);
+  transform:scale(1.05);
+}
+
+.empty{padding:60px 20px;text-align:center;color:#555;font-size:14px}
+
+#cartbar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:linear-gradient(180deg,var(--bg-alt) 0%,var(--bg-alt) 100%);
+  color:#fff;padding:14px 16px;
+  display:flex;align-items:center;gap:12px;
+  box-shadow:0 -8px 32px rgba(0,0,0,.85), 0 -1px 0 rgba(212,175,55,.15);
+  z-index:100;border-top:1px solid var(--border);
+  transform:translateY(110%);transition:transform .35s cubic-bezier(.25,.46,.45,.94);
+  padding-bottom:max(14px, env(safe-area-inset-bottom));
+}
+#cartbar.on{transform:translateY(0)}
+.cm{flex:1;min-width:0;display:flex;align-items:center;gap:10px}
+.cart-icon{
+  width:38px;height:38px;border-radius:50%;
+  background:linear-gradient(135deg,var(--border),var(--card-bg-alt));
+  border:1px solid var(--border-dim);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  flex-shrink:0;position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.cart-badge{
+  position:absolute;top:-3px;right:-3px;
+  background:var(--accent);color:#000;
+  min-width:18px;height:18px;border-radius:9px;padding:0 5px;
+  font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--bg-alt);
+}
+.cm-text{flex:1;min-width:0}
+#cc{font-size:14px;font-weight:800;color:#fff;letter-spacing:-.1px}
+#ct{font-size:13px;color:var(--accent);margin-top:3px;font-weight:700}
+#ok{
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 100%);
+  color:#000;border:none;
+  padding:13px 24px;border-radius:24px;
+  font-size:14.5px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;
+  transition:all .2s cubic-bezier(.4,0,.2,1);letter-spacing:-.1px;
+  box-shadow:0 4px 14px rgba(212,175,55,.35), inset 0 1px 0 rgba(255,255,255,.25);
+}
+#ok:active{transform:scale(.94);box-shadow:0 2px 8px rgba(212,175,55,.4), inset 0 2px 4px rgba(0,0,0,.2)}
+
+#done{
+  position:fixed;inset:0;background:#060606;
+  display:none;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:40px;gap:16px;z-index:200;animation:fi .3s ease;
+}
+@keyframes fi{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+#done .dico{font-size:80px}
+#done h2{font-size:24px;font-weight:800;color:var(--accent)}
+#done p{font-size:14px;color:#888;line-height:1.8}
+
+/* أحجام (إذا كان المنتج له sizes) */
+.c-sizes{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.sz-btn{
+  padding:6px 11px;border-radius:16px;font-size:11.5px;font-weight:700;
+  background:linear-gradient(180deg,var(--card-bg-alt),var(--card-bg-alt));
+  border:1px solid var(--border-dim);color:#999;cursor:pointer;letter-spacing:-.1px;
+  transition:all .2s cubic-bezier(.4,0,.2,1);
+}
+.sz-btn:active{transform:scale(.92)}
+.sz-btn.active{
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 100%);
+  border-color:var(--accent);color:#000;font-weight:800;
+  box-shadow:0 2px 6px rgba(212,175,55,.3), inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+/* Summary modal — يظهر قبل الإرسال */
+#summaryModal{
+  position:fixed;inset:0;background:rgba(0,0,0,.85);
+  display:none;align-items:flex-end;justify-content:center;
+  z-index:150;animation:fade .25s ease;backdrop-filter:blur(6px);
+}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sm-sheet{
+  background:var(--bg-header);border-radius:22px 22px 0 0;
+  width:100%;max-width:560px;max-height:88vh;display:flex;flex-direction:column;
+  border-top:1px solid var(--border-dim);animation:slideUp .3s cubic-bezier(.25,.46,.45,.94);
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.sm-handle{display:flex;justify-content:center;padding:8px 0 0}
+.sm-handle-bar{width:40px;height:4px;background:var(--accent);border-radius:2px;opacity:.6}
+.sm-hdr{
+  padding:16px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.sm-title{font-size:17px;font-weight:800;color:var(--accent)}
+.sm-close{
+  width:32px;height:32px;border-radius:50%;background:var(--card-bg-alt);
+  border:none;color:#888;font-size:18px;cursor:pointer;
+}
+.sm-body{flex:1;overflow-y:auto;padding:16px 20px}
+.sm-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 0;border-bottom:1px dashed var(--card-bg-alt);
+}
+.sm-item:last-child{border-bottom:none}
+.sm-item-name{font-size:14px;color:#eee;font-weight:600}
+.sm-item-sub{font-size:11px;color:#666;margin-top:2px}
+.sm-item-price{font-size:14px;color:var(--accent);font-weight:700;white-space:nowrap}
+.sm-total{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 20px;background:var(--card-bg);border-top:1px solid var(--border);
+}
+.sm-total-label{font-size:14px;color:#888;font-weight:700}
+.sm-total-value{font-size:20px;color:var(--accent);font-weight:800}
+.sm-notes-wrap{padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-alt)}
+.sm-notes-label{font-size:12px;font-weight:700;color:#888;margin-bottom:8px;letter-spacing:.5px}
+.sm-notes{
+  width:100%;min-height:64px;padding:10px 12px;
+  background:var(--card-bg-alt);border:1.5px solid var(--border-dim);border-radius:10px;
+  color:#eee;font-size:13px;font-family:inherit;resize:vertical;outline:none;
+  direction:rtl;
+}
+.sm-notes:focus{border-color:var(--accent)}
+.sm-actions{
+  display:flex;gap:10px;padding:14px 20px;
+  background:linear-gradient(180deg,var(--bg-alt),#070707);
+  border-top:1px solid var(--border);
+  padding-bottom:max(14px, env(safe-area-inset-bottom));
+}
+.sm-btn{
+  flex:1;padding:14px;border-radius:16px;font-size:15px;font-weight:800;
+  cursor:pointer;border:none;
+  transition:all .2s cubic-bezier(.4,0,.2,1);letter-spacing:-.1px;
+}
+.sm-btn:active{transform:scale(.96)}
+.sm-btn.primary{
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent) 100%);
+  color:#000;flex:1.5;
+  box-shadow:0 4px 14px rgba(212,175,55,.3), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.sm-btn.primary:active{
+  box-shadow:0 2px 6px rgba(212,175,55,.35), inset 0 2px 4px rgba(0,0,0,.2);
+}
+.sm-btn.ghost{
+  background:var(--card-bg-alt);color:#999;border:1px solid var(--border-dim);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
+}
+.sm-btn.ghost:active{background:#1c1c1c;color:#bbb}
+.sm-empty{padding:40px 20px;text-align:center;color:#555;font-size:14px}
+</style>
+</head>
+<body>
+<div class="sticky-stack">
+  <div class="hdr" id="hdr"></div>
+  <div class="search-bar">
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search" class="search-input" placeholder="ابحث عن منتج...">
+    </div>
+  </div>
+  <div class="tabs" id="tabs"></div>
+  <div class="sub-chips" id="subChips" style="display:none"></div>
+</div>
+<div id="scroll"></div>
+<div id="cartbar">
+  <div class="cm">
+    <div class="cart-icon">🛒<span class="cart-badge" id="cbadge">0</span></div>
+    <div class="cm-text"><div id="cc"></div><div id="ct"></div></div>
+  </div>
+  <button id="ok">تأكيد الطلب ✓</button>
+</div>
+
+<!-- Summary Modal — يظهر قبل التأكيد النهائي -->
+<div id="summaryModal" onclick="if(event.target===this)closeSummary()">
+  <div class="sm-sheet">
+    <div class="sm-handle"><div class="sm-handle-bar"></div></div>
+    <div class="sm-hdr">
+      <div class="sm-title">🛒 ملخص الطلب</div>
+      <button class="sm-close" onclick="closeSummary()">✕</button>
+    </div>
+    <div class="sm-body" id="smBody"></div>
+    <div class="sm-total">
+      <div class="sm-total-label">الإجمالي</div>
+      <div class="sm-total-value" id="smTotal">0</div>
+    </div>
+    <div class="sm-notes-wrap">
+      <div class="sm-notes-label">📝 ملاحظات على الطلب (اختياري)</div>
+      <textarea id="smNotes" class="sm-notes" placeholder="مثال: بدون سكر، مع ثلج إضافي..."></textarea>
+    </div>
+    <div class="sm-actions">
+      <button class="sm-btn ghost" onclick="closeSummary()">إلغاء</button>
+      <button class="sm-btn primary" id="confirmFinal">تأكيد الطلب ✅</button>
+    </div>
+  </div>
+</div>
+
+<div id="done">
+  <div class="dico">✅</div>
+  <h2>تم استلام طلبك! 🎉</h2>
+  <p>سيتواصل معك البوت الآن<br>لإتمام بيانات التوصيل 💬</p>
+  <a id="wa-back" href="#" onclick="try{window.history.back();}catch(e){}try{window.close();}catch(e){}" style="display:none;margin-top:18px;background:var(--accent);color:#000;padding:12px 28px;border-radius:24px;font-size:15px;font-weight:800;text-decoration:none">💬 العودة للمحادثة</a>
+</div>
+<script>
+var TOKEN = ${token};
+var CUR   = ${curr};
+var PRODS = ${pdata};
+var CATS  = ${cdata};
+var LOGO  = ${logoJ};
+var NAME  = ${nameJ};
+var COLOR = ${colorJ};
+var BOT_PHONE = ${phoneJ};
+var ORDER_MODE   = ${JSON.stringify(store.adminConfig?.orderMode || "cart")};
+var PRIMARY_BTN  = ${JSON.stringify(store.adminConfig?.menuLayout?.primaryButtonText || "اطلب الآن")};
+var cart  = {};
+var cartbar  = document.getElementById('cartbar');
+var scrollEl = document.getElementById('scroll');
+var tabsEl   = document.getElementById('tabs');
+
+// ── Header (logo/icon + name + back button) ──
+(function() {
+  var hdr = document.getElementById('hdr');
+  hdr.innerHTML = '';
+
+  // الـ main section: logo + name
+  var main = document.createElement('div');
+  main.className = 'hdr-main';
+  if (LOGO) {
+    var img = document.createElement('img');
+    img.className = 'hdr-logo';
+    img.src = LOGO;
+    img.onerror = function() {
+      var ic = document.createElement('div');
+      ic.className = 'hdr-icon';
+      ic.textContent = '🛍️';
+      img.replaceWith(ic);
+    };
+    main.appendChild(img);
+  } else {
+    var ic = document.createElement('div');
+    ic.className = 'hdr-icon';
+    ic.textContent = '🛍️';
+    main.appendChild(ic);
+  }
+  var txtDiv = document.createElement('div');
+  txtDiv.className = 'hdr-text';
+  txtDiv.innerHTML = '<div class="hdr-name">' + NAME + '</div>' +
+                     '<div class="hdr-sub">اختر طلبك ثم اضغط تأكيد ✅</div>';
+  main.appendChild(txtDiv);
+  hdr.appendChild(main);
+
+  // زر العودة للواتساب
+  var back = document.createElement('button');
+  back.className = 'hdr-back';
+  back.title = 'العودة للمحادثة';
+  back.textContent = '🔙';
+  back.addEventListener('click', function() {
+    if (!confirm('هل تريد العودة للمحادثة؟ (سيتم إلغاء السلة الحالية)')) return;
+    try { window.history.back(); } catch(e) {}
+    if (BOT_PHONE) {
+      try { window.location.href = 'whatsapp://send?phone=' + BOT_PHONE; } catch(e) {}
+    }
+    setTimeout(function(){ try { window.close(); } catch(e) {} }, 600);
+  });
+  hdr.appendChild(back);
+})();
+
+// ── Build card sections ──
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = String(s || '');
+  return d.innerHTML;
+}
+
+var multiCat = CATS.length > 1;
+
+CATS.forEach(function(cat, ci) {
+  var sec = document.createElement('div');
+  sec.className = 'cat-section' + (ci === 0 ? ' visible' : '');
+  sec.id = 'cat-' + cat.id;
+
+  if (multiCat) {
+    var lbl = document.createElement('div');
+    lbl.className = 'cat-label';
+    lbl.innerHTML = '<span>' + esc(cat.emoji) + '</span><span>' + esc(cat.name) + '</span>';
+    sec.appendChild(lbl);
+  }
+
+  var grid = document.createElement('div');
+  grid.className = 'grid';
+
+  cat.items.forEach(function(pid) {
+    var p = PRODS[pid];
+    if (!p) return;
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.pid = pid;
+    card.dataset.cat = String(p.categoryId || cat.id || '');
+    card.dataset.sub = String(p.subCategoryId || '');
+
+    // Image wrapper
+    var imgDiv = document.createElement('div');
+    imgDiv.className = 'c-img';
+    if (p.imageUrl) {
+      var img = document.createElement('img');
+      img.src = p.imageUrl;
+      img.alt = p.name;
+      img.loading = 'lazy';
+      img.onerror = function() { imgDiv.innerHTML = '<div class="no-img">🍽️</div>'; };
+      imgDiv.appendChild(img);
+    } else {
+      imgDiv.innerHTML = '<div class="no-img">🍽️</div>';
+    }
+
+    // Body
+    var body = document.createElement('div');
+    body.className = 'c-body';
+
+    var nameEl = document.createElement('div');
+    nameEl.className = 'c-name';
+    nameEl.textContent = p.name;
+    body.appendChild(nameEl);
+
+    if (p.description) {
+      var descEl = document.createElement('div');
+      descEl.className = 'c-desc';
+      descEl.textContent = p.description;
+      body.appendChild(descEl);
+    }
+
+    // أحجام (sizes) — لو المنتج له variants
+    if (p.sizes && p.sizes.length) {
+      var szWrap = document.createElement('div');
+      szWrap.className = 'c-sizes';
+      p.sizes.forEach(function(sz, si) {
+        var szBtn = document.createElement('button');
+        szBtn.className = 'sz-btn' + (si === 0 ? ' active' : '');
+        szBtn.textContent = sz.label + ' (' + sz.price + ')';
+        szBtn.dataset.price = sz.price;
+        szBtn.dataset.label = sz.label;
+        szBtn.addEventListener('click', function() {
+          szWrap.querySelectorAll('.sz-btn').forEach(function(b){ b.classList.remove('active'); });
+          szBtn.classList.add('active');
+          // تحديث السعر الظاهر
+          var pe = card.querySelector('.c-price');
+          if (pe) pe.textContent = sz.price + ' ' + CUR;
+          // تحديث السعر الفعلي للمنتج في PRODS
+          PRODS[pid].selectedSize = sz.label;
+          PRODS[pid].price = Number(sz.price);
+          sync();
+        });
+        szWrap.appendChild(szBtn);
+      });
+      // الحجم الافتراضي = الأول
+      if (p.sizes[0]) {
+        PRODS[pid].selectedSize = p.sizes[0].label;
+        PRODS[pid].price = Number(p.sizes[0].price);
+      }
+      body.appendChild(szWrap);
+    }
+
+    var foot = document.createElement('div');
+    foot.className = 'c-foot';
+
+    var priceEl = document.createElement('div');
+    priceEl.className = 'c-price';
+    priceEl.textContent = (PRODS[pid].price || p.price) + ' ' + CUR;
+    foot.appendChild(priceEl);
+
+    var ctrl = document.createElement('div');
+    ctrl.className = 'c-ctrl';
+    ctrl.innerHTML =
+      (ORDER_MODE === 'single'
+        ? '<button class="cb-single" data-id="' + esc(pid) + '">' + (PRIMARY_BTN || 'اطلب الآن') + '</button>'
+        : '<button class="cb minus zero" data-id="' + esc(pid) + '">−</button>' +
+          '<span class="cq" id="q' + esc(pid) + '">0</span>' +
+          '<button class="cb plus" data-id="' + esc(pid) + '">+</button>');
+    foot.appendChild(ctrl);
+
+    body.appendChild(foot);
+    card.appendChild(imgDiv);
+    card.appendChild(body);
+    grid.appendChild(card);
+  });
+
+  if (!grid.children.length) {
+    grid.innerHTML = '<div class="empty">لا توجد منتجات</div>';
+  }
+  sec.appendChild(grid);
+  scrollEl.appendChild(sec);
+});
+
+// ── نظام التبويب الموحّد: tabs = categories، chips = subCategories ──
+try { (function() {
+  var subChipsEl = document.getElementById('subChips');
+  if (!subChipsEl || !tabsEl) return;
+  var activeCat  = CATS[0] ? CATS[0].id : '__all__';
+  var activeSub  = '__all__';
+
+  if (!multiCat) { tabsEl.style.display = 'none'; }
+
+  function applyFilter() {
+    document.querySelectorAll('.card').forEach(function(c) {
+      var cc = c.dataset.cat || '';
+      var cs = c.dataset.sub || '';
+      var okSub = (activeSub === '__all__') || (cs === activeSub);
+      c.classList.toggle('hidden-by-filter', !okSub);
+    });
+  }
+
+  function renderSubChips() {
+    subChipsEl.innerHTML = '';
+    var cat = CATS.find(function(c){ return c.id === activeCat; });
+    var subs = (cat && Array.isArray(cat.subCategories)) ? cat.subCategories : [];
+    if (!subs.length) { subChipsEl.style.display = 'none'; activeSub = '__all__'; return; }
+    subChipsEl.style.display = 'flex';
+
+    var allChip = document.createElement('button');
+    allChip.className = 'chip active';
+    allChip.textContent = '✦ الكل';
+    allChip.addEventListener('click', function() {
+      subChipsEl.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); });
+      allChip.classList.add('active');
+      activeSub = '__all__';
+      applyFilter();
+    });
+    subChipsEl.appendChild(allChip);
+
+    subs.forEach(function(s) {
+      var chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = (s.emoji ? s.emoji + ' ' : '') + s.name;
+      chip.addEventListener('click', function() {
+        subChipsEl.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); });
+        chip.classList.add('active');
+        activeSub = s.id;
+        applyFilter();
+      });
+      subChipsEl.appendChild(chip);
+    });
+  }
+
+  CATS.forEach(function(cat, ci) {
+    var btn = document.createElement('button');
+    btn.className = 'tab' + (ci === 0 ? ' active' : '');
+    btn.textContent = cat.emoji + ' ' + cat.name;
+    btn.addEventListener('click', function() {
+      tabsEl.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+      btn.classList.add('active');
+      document.querySelectorAll('.cat-section').forEach(function(s){ s.classList.remove('visible'); });
+      var sec = document.getElementById('cat-' + cat.id);
+      if (sec) sec.classList.add('visible');
+      activeCat = cat.id; activeSub = '__all__';
+      renderSubChips(); applyFilter();
+      scrollEl.scrollTop = 0;
+    });
+    tabsEl.appendChild(btn);
+  });
+
+  renderSubChips();
+  applyFilter();
+})(); } catch(_tabsErr) { console.error('tabs init error:', _tabsErr); }
+
+// ── Sync cart bar ──
+function sync() {
+  var n = 0, t = 0;
+  Object.keys(cart).forEach(function(id) {
+    var q = cart[id];
+    if (q > 0 && PRODS[id]) { n += q; t += q * PRODS[id].price; }
+  });
+  // تحديث "has-qty" للكروت — البطاقات التي بها كميات تأخذ border ذهبي
+  document.querySelectorAll('.card').forEach(function(c) {
+    var pid = c.dataset.pid;
+    if (cart[pid] > 0) c.classList.add('has-qty'); else c.classList.remove('has-qty');
+  });
+  if (n > 0) {
+    cartbar.classList.add('on');
+    document.getElementById('cc').textContent = n + ' منتج في السلة';
+    document.getElementById('ct').textContent = 'الإجمالي: ' + t.toFixed(2) + ' ' + CUR;
+    document.getElementById('cbadge').textContent = n;
+  } else {
+    cartbar.classList.remove('on');
+  }
+}
+
+// ── Delegated click for +/- (cart mode) ──
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.cb');
+  if (!btn) return;
+  var id = btn.dataset.id;
+  if (!id) return;
+  var delta = btn.classList.contains('plus') ? 1 : -1;
+  cart[id] = Math.max(0, (cart[id] || 0) + delta);
+  var qEl = document.getElementById('q' + id);
+  var mb  = btn.closest('.c-ctrl').querySelector('.minus');
+  qEl.textContent = cart[id];
+  qEl.className = 'cq' + (cart[id] > 0 ? ' nz' : '');
+  if (cart[id] > 0) { mb.classList.remove('zero'); } else { mb.classList.add('zero'); }
+  sync();
+});
+
+// ── Single-order mode: زر واحد لكل خدمة/مشروع، يفتح ملخص فوراً ──
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.cb-single');
+  if (!btn) return;
+  var id = btn.dataset.id;
+  if (!id || !PRODS[id]) return;
+  // اختيار حصري: نُلغي السلة ونضع هذا فقط بكمية 1
+  cart = {};
+  cart[id] = 1;
+  // تحديث visual: حذف "taken" من غيره
+  document.querySelectorAll('.cb-single.taken').forEach(function(b){
+    b.classList.remove('taken');
+    b.textContent = PRIMARY_BTN || 'اطلب الآن';
+  });
+  btn.classList.add('taken');
+  btn.textContent = '✓ مختار';
+  sync();
+  // افتح ملخص الطلب مباشرة (تجربة العميل أسرع)
+  setTimeout(function(){ openSummary(); }, 200);
+});
+
+// ── Search filter — يفلتر البطاقات حسب اسم/وصف المنتج ──
+document.getElementById('search').addEventListener('input', function(e) {
+  var q = String(e.target.value || '').trim().toLowerCase();
+  document.querySelectorAll('.card').forEach(function(card) {
+    var pid  = card.dataset.pid;
+    var prod = PRODS[pid];
+    if (!prod) return;
+    var hay = (prod.name + ' ' + (prod.description || '')).toLowerCase();
+    card.style.display = (!q || hay.indexOf(q) !== -1) ? '' : 'none';
+  });
+  // إخفاء tabs عند البحث
+  document.getElementById('tabs').style.display = q ? 'none' : '';
+  if (q) {
+    document.querySelectorAll('.cat-section').forEach(function(s) { s.classList.add('visible'); });
+  }
+});
+
+// ── Summary modal helpers ──
+function openSummary() {
+  var items = [];
+  Object.keys(cart).forEach(function(id) {
+    var q = cart[id];
+    if (q > 0 && PRODS[id]) items.push({ id: id, name: PRODS[id].name, price: PRODS[id].price, qty: q });
+  });
+  if (!items.length) return;
+
+  var body = document.getElementById('smBody');
+  body.innerHTML = '';
+  var total = 0;
+  items.forEach(function(it) {
+    var sub = it.price * it.qty;
+    total += sub;
+    var row = document.createElement('div');
+    row.className = 'sm-item';
+    row.innerHTML =
+      '<div><div class="sm-item-name">' + esc(it.name) + '</div>' +
+      '<div class="sm-item-sub">' + it.qty + ' × ' + it.price + ' ' + CUR + '</div></div>' +
+      '<div class="sm-item-price">' + sub.toFixed(2) + ' ' + CUR + '</div>';
+    body.appendChild(row);
+  });
+  document.getElementById('smTotal').textContent = total.toFixed(2) + ' ' + CUR;
+  document.getElementById('summaryModal').style.display = 'flex';
+}
+function closeSummary() {
+  document.getElementById('summaryModal').style.display = 'none';
+}
+
+// ── Submit (يفتح modal الملخص أولاً، ثم يرسل بعد التأكيد) ──
+document.getElementById('ok').addEventListener('click', function() {
+  openSummary();
+});
+
+document.getElementById('confirmFinal').addEventListener('click', async function() {
+  var items = [];
+  Object.keys(cart).forEach(function(id) {
+    var q = cart[id];
+    if (q > 0 && PRODS[id]) items.push({ id: id, name: PRODS[id].name, price: PRODS[id].price, qty: q });
+  });
+  if (!items.length) return;
+
+  var notes  = String(document.getElementById('smNotes').value || '').trim().slice(0, 500);
+  var btn    = document.getElementById('confirmFinal');
+  btn.disabled = true;
+  btn.textContent = '⏳ إرسال…';
+  var ok = false;
+  try {
+    var r = await fetch('/api/order/' + TOKEN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: items, notes: notes })
+    });
+    ok = r.ok;
+  } catch(e) {}
+  if (!ok) {
+    btn.disabled = false;
+    btn.textContent = '⚠️ خطأ — أعد المحاولة';
+    return;
+  }
+  closeSummary();
+  document.getElementById('done').style.display = 'flex';
+  setTimeout(function() {
+    try { window.history.back(); } catch(e) {}
+    setTimeout(function() {
+      if (BOT_PHONE) {
+        try { window.location.href = 'whatsapp://send?phone=' + BOT_PHONE; } catch(e) {}
+      }
+      setTimeout(function() {
+        var waBtn = document.getElementById('wa-back');
+        if (waBtn) waBtn.style.display = 'inline-block';
+        try { window.close(); } catch(e) {}
+      }, 800);
+    }, 600);
+  }, 1800);
+});
+</script>
+</body>
+</html>`);
+});
+
+app.post(["/api/order/:token", "/api/o/:token"], async (req, res) => {
+  const sess = waMgr.getWebOrderSession(req.params.token);
+  if (!sess) return res.status(410).json({ ok: false, error: "expired" });
+
+  waMgr.clearWebOrderSession(req.params.token);
+
+  const { storeId, from } = sess;
+  const { items, notes } = req.body || {};
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ ok: false, error: "empty cart" });
+  }
+  const cleanNotes = String(notes || "").trim().slice(0, 500);
+
+  const store = resolveStore(storeId);
+  if (!store) return res.status(404).json({ ok: false, error: "store not found" });
+
+  // Build cart with imageUrl from store products
+  const cartItems = items
+    .map(item => {
+      const prod = (store.products || []).find(p => String(p.id) === String(item.id));
+      return {
+        id:       item.id,
+        name:     String(item.name || prod?.name || ""),
+        price:    Number(item.price ?? prod?.price ?? 0),
+        qty:      Math.max(1, Number(item.qty) || 1),
+        imageUrl: prod?.imageUrl || null,
+      };
+    })
+    .filter(i => i.qty > 0 && i.name);
+
+  if (!cartItems.length) return res.status(400).json({ ok: false, error: "invalid items" });
+
+  // Set rule-based session: cart is ready, waiting for name
+  // path="webview" يضمن استخدام text plain (لا polls) في checkout flow
+  sessionManager.set(from, { step: "COLLECT_NAME", cart: cartItems, path: "webview", orderNotes: cleanNotes });
+
+  // Send WhatsApp name request directly (outside storeCtx)
+  console.log(`[web-order] sending reply → storeId=${storeId} from=${from} notes=${cleanNotes.length}`);
+  try {
+    await waMgr.sendMessage(storeId, from,
+      `✅ *تم استلام طلبك!*\n\n` +
+      cartItems.map(i => `• ${i.name} × ${i.qty}`).join("\n") +
+      (cleanNotes ? `\n\n📝 *ملاحظات:* ${cleanNotes}` : "") +
+      `\n\n📝 من فضلك *اكتب اسمك الكريم* لإتمام الطلب:`
+    );
+    console.log(`[web-order] ✅ reply sent → ${from}`);
+  } catch (e) {
+    console.error(`[web-order] ❌ sendMessage failed → ${from}: ${e.message}`);
+  }
+
+  res.json({ ok: true });
+});
+
+// ─── Test send (master only) ──────────────────────────────────────────────────
+app.post("/master/test-send", async (req, res) => {
+  const tok = req.headers["x-master-token"];
+  if (tok !== process.env.MASTER_PASSWORD) return res.status(403).json({ ok: false });
+  const { storeId, to, text } = req.body || {};
+  if (!storeId || !to || !text) return res.status(400).json({ ok: false, error: "storeId, to, text required" });
+  try {
+    await waMgr.sendMessage(storeId, to, text);
+    res.json({ ok: true, sent: `${storeId} → ${to}` });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 // ─── Boot & Start ─────────────────────────────────────────────────────────────
 module.exports = { app, handleMessage };
@@ -1504,6 +4131,7 @@ if (require.main === module) {
       sessionWatchdog.start();
       dailyReport.start();
       orderScheduler.start();
+      require("./monthly-archive").startMonthlyCron();
     });
   });
 }

@@ -7,7 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const LOG_PATH = process.env.ORDERS_LOG_PATH || "./data/orders.jsonl";
+const LOG_PATH = process.env.ORDERS_LOG_PATH || path.join(__dirname, "..", "data", "orders.jsonl");
 
 function ensureDir() {
   const dir = path.dirname(LOG_PATH);
@@ -42,4 +42,23 @@ function readOrders(limit = 100) {
   }
 }
 
-module.exports = { logOrder, readOrders };
+function updateOrderStatus(orderId, status) {
+  try {
+    if (!fs.existsSync(LOG_PATH)) return false;
+    const lines = fs.readFileSync(LOG_PATH, "utf8").trim().split("\n").filter(Boolean);
+    const updated = lines.map(l => {
+      try {
+        const obj = JSON.parse(l);
+        if (obj.orderId === orderId) obj.status = status;
+        return JSON.stringify(obj);
+      } catch { return l; }
+    });
+    fs.writeFileSync(LOG_PATH, updated.join("\n") + "\n", "utf8");
+    return true;
+  } catch (err) {
+    console.error("❌ Failed to update order:", err.message);
+    return false;
+  }
+}
+
+module.exports = { logOrder, readOrders, updateOrderStatus };

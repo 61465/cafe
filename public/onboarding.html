@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>دليل البدء — ثواني | Thawani</title>
+<style>
+  :root{
+    --green:#1b5e20; --green-mid:#2e7d32; --green-lt:#e8f5e9; --green-50:#f0fdf4;
+    --gold:#C9A24B; --gold-lt:#fff8e7;
+    --gray:#6b7280; --border:#e5e7eb; --bg:#f9fafb; --card:#fff;
+    --text:#111827;
+    --radius:14px; --shadow:0 2px 12px rgba(0,0,0,.07);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.8}
+  a{color:var(--green-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,var(--green),var(--green-mid));color:#fff;padding:52px 24px;text-align:center}
+  .hero h1{font-size:2rem;font-weight:800;margin-bottom:12px}
+  .hero p{font-size:1.05rem;opacity:.9;max-width:580px;margin:0 auto 16px}
+  .badge{display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:5px 18px;font-size:.85rem}
+
+  /* Layout */
+  .wrap{max-width:820px;margin:0 auto;padding:36px 18px}
+  .section{margin-bottom:44px}
+  .sec-title{font-size:1.2rem;font-weight:800;color:var(--green);margin-bottom:20px;padding-bottom:10px;border-bottom:2px solid var(--green-lt);display:flex;align-items:center;gap:10px}
+  .num{background:var(--green);color:#fff;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;font-weight:700}
+
+  /* Card */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .card h3{font-size:1rem;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+
+  /* Steps */
+  .steps{list-style:none;counter-reset:s}
+  .steps li{counter-increment:s;padding:11px 0;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:flex-start}
+  .steps li:last-child{border-bottom:none}
+  .steps li::before{content:counter(s);background:var(--green-lt);color:var(--green);font-weight:700;min-width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.82rem;flex-shrink:0;margin-top:3px}
+  .step-body strong{display:block;margin-bottom:3px;font-size:.95rem}
+  .step-body span{font-size:.88rem;color:var(--gray)}
+
+  /* Alert */
+  .alert{padding:13px 17px;border-radius:10px;margin:14px 0;display:flex;gap:11px;align-items:flex-start;font-size:.9rem}
+  .alert.info {background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+  .alert.warn {background:#fffbeb;border:1px solid #fde68a;color:#92400e}
+  .alert.success{background:var(--green-lt);border:1px solid #86efac;color:var(--green)}
+  .alert .ic{font-size:1.2rem;flex-shrink:0;margin-top:1px}
+
+  /* Checklist */
+  .checklist{list-style:none}
+  .checklist li{padding:8px 0;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);font-size:.93rem}
+  .checklist li:last-child{border-bottom:none}
+  .checklist li::before{content:"✅";font-size:.95rem}
+
+  /* Plans */
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .plan{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center;transition:.2s}
+  .plan.popular{border-color:var(--gold);background:var(--gold-lt)}
+  .plan .price{font-size:1.6rem;font-weight:800;color:var(--green);margin:8px 0}
+  .plan .name{font-weight:700;font-size:1rem;margin-bottom:4px}
+  .plan ul{list-style:none;font-size:.82rem;color:var(--gray);margin-top:10px;text-align:right;line-height:2}
+  .plan ul li::before{content:"• "}
+
+  /* QR Box */
+  .qr-demo{background:#f0fdf4;border:2px dashed #86efac;border-radius:12px;padding:24px;text-align:center;margin:16px 0}
+  .qr-demo .big{font-size:4rem;margin-bottom:8px}
+
+  /* Button */
+  .btn{display:inline-block;padding:11px 26px;border-radius:10px;font-size:.95rem;font-weight:600;cursor:pointer;border:none;transition:.2s;text-decoration:none}
+  .btn-green{background:var(--green);color:#fff}
+  .btn-green:hover{background:var(--green-mid);color:#fff;text-decoration:none}
+  .btn-outline{background:#fff;color:var(--green);border:2px solid var(--green)}
+  .btn-wa{background:#25d366;color:#fff}
+  .btn-wa:hover{background:#128c7e;color:#fff;text-decoration:none}
+  .btn-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px;justify-content:center}
+
+  /* Footer */
+  .footer{background:var(--green-lt);border-top:2px solid #86efac;padding:30px 24px;text-align:center;color:var(--gray);font-size:.88rem;margin-top:40px}
+
+  @media(max-width:640px){
+    .hero h1{font-size:1.5rem}
+    .plans{grid-template-columns:1fr}
+    .btn-row{flex-direction:column;align-items:center}
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <div style="font-size:3rem;margin-bottom:14px">🤖</div>
+  <h1>أهلاً بك في ثواني | Thawani</h1>
+  <p>بوت واتساب ذكي لمتجرك — يستقبل الطلبات ويرد على عملائك تلقائياً على مدار الساعة</p>
+  <div class="badge">⏱️ وقت الإعداد: 10 دقائق فقط</div>
+</div>
+
+<div class="wrap">
+
+  <!-- ─── ما ستحصل عليه ──────────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">✓</div> ما يقدمه ثواني | Thawani</div>
+    <div class="card">
+      <ul class="checklist">
+        <li>بوت واتساب يرد على عملائك ويستقبل الطلبات 24/7 بالأزرار فقط</li>
+        <li>لوحة تحكم كاملة: المنيو، الطلبات، العملاء، الكوبونات، النقاط</li>
+        <li>دعم منيو بالصور + بث رسائل للعملاء</li>
+        <li>تقرير يومي تلقائي بالإيرادات وأكثر المنتجات مبيعاً</li>
+        <li>طلبات بوقت محدد (جدولة التوصيل)</li>
+        <li>نظام نقاط ولاء + كوبونات خصم</li>
+        <li>تنبيه تلقائي عند انقطاع الاتصال</li>
+        <li>خيار بث رسائل ترويجية لكل العملاء (باقة احترافية وأعلى)</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── الباقات ─────────────────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">💎</div> الباقات</div>
+    <div class="plans">
+      <div class="plan">
+        <div class="name">🌱 أساسية</div>
+        <div class="price">80 <span style="font-size:.9rem">ر.س</span></div>
+        <div style="font-size:.78rem;color:var(--gray)">/شهر</div>
+        <ul>
+          <li>منيو كامل بالصور</li>
+          <li>إدارة الطلبات</li>
+          <li>سجل العملاء</li>
+          <li>نقاط الولاء</li>
+          <li>تقرير يومي</li>
+        </ul>
+      </div>
+      <div class="plan popular">
+        <div style="font-size:.75rem;font-weight:700;color:var(--gold);margin-bottom:4px">⭐ الأكثر طلباً</div>
+        <div class="name">⭐ احترافية</div>
+        <div class="price">150 <span style="font-size:.9rem">ر.س</span></div>
+        <div style="font-size:.78rem;color:var(--gray)">/شهر</div>
+        <ul>
+          <li>كل مميزات الأساسية</li>
+          <li>بث رسائل للعملاء</li>
+          <li>كوبونات خصم</li>
+          <li>طلبات مجدولة</li>
+          <li>تنبيه انقطاع</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <div class="name">👑 متقدمة</div>
+        <div class="price">250 <span style="font-size:.9rem">ر.س</span></div>
+        <div style="font-size:.78rem;color:var(--gray)">/شهر</div>
+        <ul>
+          <li>كل مميزات الاحترافية</li>
+          <li>دفع إلكتروني (قريباً)</li>
+          <li>أولوية الدعم الفني</li>
+          <li>تقارير متقدمة</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── خطوة 1: ربط واتساب ──────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">1</div> ربط البوت بحساب واتساب</div>
+
+    <div class="alert info">
+      <div class="ic">ℹ️</div>
+      <div>ثواني | Thawani يعمل بـ <strong>QR Code</strong> مثل تماماً واتساب ويب — لا تحتاج أي حساب مطوّر أو Meta API. فقط امسح الرمز من هاتفك.</div>
+    </div>
+
+    <div class="card">
+      <h3>📷 كيف تربط واتساب (أسهل من واتساب ويب)</h3>
+      <ul class="steps">
+        <li>
+          <div class="step-body">
+            <strong>افتح لوحة التحكم</strong>
+            <span>اذهب لـ <a href="/store-admin.html">/store-admin.html</a> وسجّل دخولك بكلمة المرور التي أرسلها لك الدعم</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>اذهب لتبويب "واتساب"</strong>
+            <span>في القائمة العلوية ابحث عن أيقونة 📱 واتساب</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>اضغط "📷 طلب QR جديد"</strong>
+            <span>سيظهر رمز QR خلال ثوانٍ</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>امسح الرمز من هاتف المتجر</strong>
+            <span>افتح واتساب ← الإعدادات ← <strong>الأجهزة المرتبطة</strong> ← ربط جهاز — وجّه الكاميرا للرمز</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>تم! ستظهر رسالة "تم الربط بنجاح 🎉"</strong>
+            <span>البوت جاهز الآن لاستقبال رسائل عملائك</span>
+          </div>
+        </li>
+      </ul>
+
+      <div class="qr-demo">
+        <div class="big">📱</div>
+        <p style="font-weight:700;margin-bottom:6px">ماذا يرى العميل عند إرسال أي رسالة؟</p>
+        <p style="font-size:.88rem;color:var(--gray)">البوت يرد فوراً بقائمة أصناف المتجر بأزرار تفاعلية — لا كتابة يدوية</p>
+      </div>
+
+      <div class="alert warn">
+        <div class="ic">⚠️</div>
+        <div>الرقم المربوط يُخصَّص للبوت فقط ولن يعمل كواتساب عادي على الهاتف. استخدم شريحة ثانية أو رقم عمل مخصص.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── خطوة 2: إعداد المتجر ────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">2</div> إعداد متجرك</div>
+
+    <div class="card">
+      <h3>⚙️ الإعدادات الأساسية</h3>
+      <ul class="steps">
+        <li>
+          <div class="step-body">
+            <strong>اسم المتجر وشعاره</strong>
+            <span>من تبويب ⚙️ الإعدادات → أضف اسم متجرك وارفع الشعار (يظهر في الفاتورة)</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>ساعات العمل</strong>
+            <span>حدد وقت الفتح والغلق — خارج هذه الساعات يرد البوت تلقائياً بأوقات العمل</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>رسوم التوصيل والعملة</strong>
+            <span>أدخل رسوم التوصيل (0 إذا مجاني) والعملة (ر.س / جنيه / درهم)</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>رقم الإشعارات</strong>
+            <span>الرقم الذي تصله إشعارات الطلبات الجديدة (يمكن أن يكون رقمك الشخصي)</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>🍽️ إضافة المنيو</h3>
+      <ul class="steps">
+        <li>
+          <div class="step-body">
+            <strong>أضف الأصناف أولاً</strong>
+            <span>تبويب المنيو ← ➕ صنف جديد (مثال: مشروبات ساخنة، معجنات، باردة)</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>أضف المنتجات لكل صنف</strong>
+            <span>اضغط على الصنف ← ➕ منتج — أضف الاسم والسعر والصورة والوصف</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>صورة المنيو الكاملة (اختياري)</strong>
+            <span>من الإعدادات ارفع صورة المنيو الكاملة — يمكن للعميل طلبها من البوت</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── خطوة 3: تجربة البوت ─────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">3</div> تجربة البوت</div>
+
+    <div class="card">
+      <h3>🧪 اختبر البوت من هاتفك</h3>
+      <ul class="steps">
+        <li>
+          <div class="step-body">
+            <strong>أرسل "مرحبا" للرقم المربوط</strong>
+            <span>سيرد البوت بقائمة الأصناف فوراً</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>اختر صنفاً ثم منتجاً ثم الكمية</strong>
+            <span>كل خطوة تعمل بالأزرار — لا حاجة لكتابة أي شيء</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>أكمل الطلب</strong>
+            <span>أدخل اسمك، العنوان، واختر "الآن" أو وقتاً محدداً للتوصيل — ثم أكّد الطلب</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>تحقق في لوحة التحكم</strong>
+            <span>تبويب الطلبات ← سترى طلبك يظهر تلقائياً</span>
+          </div>
+        </li>
+      </ul>
+
+      <div class="alert success">
+        <div class="ic">✅</div>
+        <div>
+          <strong>مميزات البوت:</strong> زر 🔙 رجوع في كل خطوة — تعديل الكميات في السلة — طلبات بوقت محدد — كوبونات خصم — استبدال نقاط الولاء
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── خطوة 4: إدارة الطلبات ───────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">4</div> إدارة الطلبات اليومية</div>
+
+    <div class="card">
+      <h3>📦 متابعة الطلبات</h3>
+      <ul class="steps">
+        <li>
+          <div class="step-body">
+            <strong>إشعار فوري عند كل طلب</strong>
+            <span>تصلك رسالة واتساب على رقم الإشعارات تحتوي تفاصيل الطلب كاملة</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>تبويب الطلبات في اللوحة</strong>
+            <span>مرتبة من الأحدث — تجد اسم العميل، المنتجات، العنوان، طريقة الدفع، الحالة</span>
+          </div>
+        </li>
+        <li>
+          <div class="step-body">
+            <strong>تغيير حالة الطلب</strong>
+            <span>اضغط على الطلب لتغيير حالته: قيد المراجعة ← جاري التحضير ← في الطريق ← تم التسليم</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>📊 التقرير اليومي التلقائي</h3>
+      <p style="font-size:.9rem;color:var(--gray)">كل يوم الساعة 11 مساءً يصلك تقرير على واتساب يحتوي:</p>
+      <ul style="margin-top:12px;padding-right:16px;font-size:.9rem;line-height:2.2;color:var(--text)">
+        <li>📦 إجمالي الطلبات وعدد المكتملة</li>
+        <li>💰 إجمالي الإيرادات</li>
+        <li>🏆 أكثر 3 منتجات مبيعاً</li>
+        <li>👤 عدد العملاء الجدد</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── الدعم ─────────────────────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="sec-title"><div class="num">5</div> الدعم الفني</div>
+    <div class="card">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="text-align:center;padding:20px;background:var(--green-50);border-radius:10px;border:1px solid #86efac">
+          <div style="font-size:2rem;margin-bottom:8px">💬</div>
+          <strong>واتساب الدعم</strong>
+          <p style="font-size:.85rem;color:var(--gray);margin-top:6px;margin-bottom:12px">متاح من 9 صباحاً – 10 مساءً</p>
+          <a href="https://wa.me/966508572902" class="btn btn-wa" style="padding:8px 18px;font-size:.88rem">تواصل الآن</a>
+        </div>
+        <div style="text-align:center;padding:20px;background:var(--green-50);border-radius:10px;border:1px solid #86efac">
+          <div style="font-size:2rem;margin-bottom:8px">🖥️</div>
+          <strong>لوحة التحكم</strong>
+          <p style="font-size:.85rem;color:var(--gray);margin-top:6px;margin-bottom:12px">إدارة كاملة لمتجرك</p>
+          <a href="/store-admin.html" class="btn btn-outline" style="padding:8px 18px;font-size:.88rem">افتح اللوحة</a>
+        </div>
+      </div>
+
+      <div class="alert info" style="margin-top:20px">
+        <div class="ic">💡</div>
+        <div>
+          <strong>للمشاكل الشائعة:</strong><br>
+          • <strong>البوت لا يرد؟</strong> افتح لوحة التحكم ← تبويب واتساب ← تحقق من الحالة — إذا "غير متصل" اضغط "طلب QR جديد" وامسح مجدداً<br>
+          • <strong>لا تصلك إشعارات؟</strong> تحقق أن رقم الإشعارات مضاف في ⚙️ الإعدادات<br>
+          • <strong>منتج لا يظهر؟</strong> تأكد أن المنتج "مفعّل" من لوحة المنيو
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="text-align:center;background:linear-gradient(135deg,var(--green-lt),#f0fdf4);border-radius:16px;padding:36px;margin-bottom:40px">
+    <div style="font-size:2.5rem;margin-bottom:12px">🚀</div>
+    <h2 style="margin-bottom:8px;font-size:1.4rem">جاهز لتشغيل بوتك؟</h2>
+    <p style="color:var(--gray);margin-bottom:24px">افتح لوحة التحكم وابدأ بإضافة منتجاتك الآن</p>
+    <div class="btn-row">
+      <a href="/store-admin.html" class="btn btn-green">🖥️ افتح لوحة التحكم</a>
+      <a href="https://wa.me/966508572902" class="btn btn-wa">💬 تواصل مع الدعم</a>
+    </div>
+  </div>
+
+</div><!-- /wrap -->
+
+<div class="footer">
+  <strong>ثواني | Thawani</strong> — بوت واتساب للمتاجر<br>
+  <span style="margin-top:6px;display:inline-block">نظام مستقل يعمل بـ Baileys — لا يتطلب Meta API أو أي إعداد خارجي</span>
+</div>
+
+</body>
+</html>

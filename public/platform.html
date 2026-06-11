@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ثواني | Thawani — بوت واتساب ذكي لمطعمك وكافيهك</title>
+<style>
+:root {
+  --green-dark:  #1b5e20;
+  --green:       #16a34a;
+  --green-light: #dcfce7;
+  --wa:          #25d366;
+  --wa-dark:     #128c7e;
+  --bg:          #f0fdf4;
+  --surface:     #ffffff;
+  --text:        #111827;
+  --text2:       #6b7280;
+  --border:      #e5e7eb;
+  --radius:      14px;
+  --shadow:      0 4px 24px rgba(0,0,0,.08);
+  --shadow-lg:   0 12px 48px rgba(0,0,0,.14);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);direction:rtl;overflow-x:hidden}
+
+/* ── Navbar ────────────────────────────────── */
+nav{position:fixed;top:0;width:100%;z-index:100;background:rgba(27,94,32,.97);backdrop-filter:blur(12px);padding:0 24px}
+.nav-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{color:#fff;font-size:20px;font-weight:800;text-decoration:none;display:flex;align-items:center;gap:8px}
+.nav-links{display:flex;gap:24px;list-style:none}
+.nav-links a{color:rgba(255,255,255,.85);text-decoration:none;font-size:14px;font-weight:500;transition:.2s}
+.nav-links a:hover{color:#fff}
+.nav-cta{background:var(--wa);color:#fff!important;padding:8px 20px;border-radius:20px;font-weight:700!important;font-size:14px;text-decoration:none;transition:.2s}
+.nav-cta:hover{background:var(--wa-dark)!important;transform:scale(1.05)}
+.hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px}
+.hamburger span{width:24px;height:2px;background:#fff;border-radius:2px;transition:.3s}
+.mobile-nav{display:none;background:var(--green-dark);padding:12px 24px 20px}
+.mobile-nav a{display:block;color:#fff;text-decoration:none;padding:10px 0;font-size:15px;border-bottom:1px solid rgba(255,255,255,.1)}
+
+/* ── Hero ──────────────────────────────────── */
+.hero{min-height:100vh;background:linear-gradient(145deg,#0d3b14 0%,#1b5e20 40%,#1a6b2a 70%,#0a4d14 100%);display:flex;align-items:center;justify-content:center;text-align:center;padding:80px 24px 60px;position:relative;overflow:hidden}
+.hero::before,.hero::after{content:"";position:absolute;border-radius:50%;opacity:.06;background:#25d366}
+.hero::before{width:600px;height:600px;top:-200px;right:-200px}
+.hero::after{width:400px;height:400px;bottom:-150px;left:-100px}
+.hero-content{max-width:700px;position:relative;z-index:1}
+.hero-badge{display:inline-block;background:rgba(37,211,102,.2);color:var(--wa);border:1px solid rgba(37,211,102,.3);padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-bottom:24px}
+.hero h1{font-size:clamp(28px,5vw,52px);font-weight:900;color:#fff;line-height:1.2;margin-bottom:20px}
+.hero h1 .hl{color:var(--wa)}
+.hero p{font-size:clamp(15px,2.5vw,19px);color:rgba(255,255,255,.8);line-height:1.7;margin-bottom:36px;max-width:560px;margin-left:auto;margin-right:auto}
+.hero-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn-hero-primary{background:var(--wa);color:#fff;padding:14px 32px;border-radius:30px;font-size:16px;font-weight:700;text-decoration:none;transition:.2s;box-shadow:0 4px 20px rgba(37,211,102,.4)}
+.btn-hero-primary:hover{background:var(--wa-dark);transform:translateY(-2px)}
+.btn-hero-outline{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.5);padding:14px 32px;border-radius:30px;font-size:16px;font-weight:600;text-decoration:none;transition:.2s}
+.btn-hero-outline:hover{background:rgba(255,255,255,.1);border-color:#fff}
+.hero-stats{display:flex;gap:32px;justify-content:center;margin-top:48px;flex-wrap:wrap}
+.hero-stat{text-align:center}
+.hero-stat .num{font-size:28px;font-weight:900;color:var(--wa)}
+.hero-stat .lbl{font-size:13px;color:rgba(255,255,255,.65);margin-top:2px}
+
+/* ── Sections ───────────────────────────────── */
+section{padding:80px 24px}
+.container{max-width:1100px;margin:0 auto}
+.section-tag{display:inline-block;background:var(--green-light);color:var(--green-dark);padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.5px;margin-bottom:12px}
+.section-title{font-size:clamp(24px,4vw,38px);font-weight:900;color:var(--text);margin-bottom:12px;line-height:1.2}
+.section-sub{font-size:16px;color:var(--text2);max-width:560px;margin:0 auto 48px;line-height:1.7}
+
+/* ── How It Works ────────────────────────────── */
+#how{background:#fff;text-align:center}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:48px}
+.step{background:var(--bg);border-radius:var(--radius);padding:32px 24px;text-align:center;position:relative;border:2px solid transparent;transition:.3s}
+.step:hover{border-color:var(--green);transform:translateY(-4px);box-shadow:var(--shadow)}
+.step-num{width:48px;height:48px;background:var(--green);color:#fff;border-radius:50%;font-size:20px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.step-icon{font-size:36px;margin-bottom:12px}
+.step h3{font-size:18px;font-weight:800;margin-bottom:10px}
+.step p{font-size:14px;color:var(--text2);line-height:1.6}
+.step-arrow{position:absolute;top:50%;left:-20px;transform:translateY(-50%);font-size:24px;color:var(--green);opacity:.4}
+
+/* ── Demo ────────────────────────────────────── */
+#demo{background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%);text-align:center}
+.demo-wrap{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;margin-top:48px;text-align:right}
+.demo-info h3{font-size:22px;font-weight:800;margin-bottom:16px}
+.demo-info p{color:var(--text2);line-height:1.7;margin-bottom:20px}
+.demo-features{list-style:none;margin-bottom:28px}
+.demo-features li{padding:8px 0;color:var(--text2);font-size:14px;border-bottom:1px solid var(--border)}
+.demo-features li::before{content:"✅ ";margin-left:4px}
+
+/* WhatsApp Chat Widget */
+.wa-widget{background:#e5ddd5;border-radius:18px;overflow:hidden;box-shadow:var(--shadow-lg);max-width:360px;margin:0 auto;font-family:system-ui,sans-serif}
+.wa-header{background:var(--wa-dark);padding:14px 16px;display:flex;align-items:center;gap:12px}
+.wa-avatar{width:40px;height:40px;background:var(--wa);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px}
+.wa-info{color:#fff}
+.wa-info strong{display:block;font-size:15px}
+.wa-info small{font-size:12px;opacity:.8}
+.wa-online{width:8px;height:8px;background:#4ade80;border-radius:50%;display:inline-block;margin-left:4px}
+.wa-msgs{height:320px;overflow-y:auto;padding:16px 12px;display:flex;flex-direction:column;gap:8px;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2300000008' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat}
+.wa-msg{max-width:78%;padding:8px 12px;border-radius:8px;font-size:14px;line-height:1.5;position:relative;word-break:break-word}
+.wa-msg.bot{background:#fff;border-radius:0 8px 8px 8px;align-self:flex-start}
+.wa-msg.user{background:#dcf8c6;border-radius:8px 0 8px 8px;align-self:flex-end;text-align:right}
+.wa-msg .time{font-size:11px;color:#999;display:block;text-align:left;margin-top:4px}
+.wa-input-row{padding:10px 12px;background:#f0f0f0;display:flex;gap:8px;align-items:center}
+.wa-input{flex:1;background:#fff;border:none;border-radius:24px;padding:10px 16px;font-size:14px;outline:none;font-family:inherit;direction:rtl}
+.wa-send{width:40px;height:40px;background:var(--wa-dark);border:none;border-radius:50%;cursor:pointer;color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.2s}
+.wa-send:hover{background:var(--green-dark)}
+.typing-indicator{display:none;padding:8px 12px;background:#fff;border-radius:0 8px 8px 8px;align-self:flex-start;max-width:70px}
+.typing-dots{display:flex;gap:4px;align-items:center;height:16px}
+.typing-dots span{width:6px;height:6px;background:#aaa;border-radius:50%;animation:bounce .8s infinite}
+.typing-dots span:nth-child(2){animation-delay:.15s}
+.typing-dots span:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+.demo-start{text-align:center;padding:20px 12px}
+.btn-start-demo{background:var(--green);color:#fff;border:none;border-radius:24px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;transition:.2s;font-family:inherit}
+.btn-start-demo:hover{background:var(--green-dark);transform:scale(1.04)}
+
+/* ── Pricing ─────────────────────────────────── */
+#pricing{background:#fff;text-align:center}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px}
+.plan{background:var(--bg);border:2px solid var(--border);border-radius:var(--radius);padding:32px 24px;text-align:center;position:relative;transition:.3s}
+.plan:hover{transform:translateY(-4px);box-shadow:var(--shadow)}
+.plan.featured{background:#fff;border-color:var(--green);box-shadow:0 0 0 4px rgba(22,163,74,.1)}
+.plan-badge{position:absolute;top:-14px;right:50%;transform:translateX(50%);background:var(--green);color:#fff;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap}
+.plan-emoji{font-size:40px;margin-bottom:12px}
+.plan h3{font-size:20px;font-weight:800;margin-bottom:6px}
+.plan-price{font-size:42px;font-weight:900;color:var(--green);margin:16px 0 4px}
+.plan-price sub{font-size:16px;font-weight:500;color:var(--text2)}
+.plan-period{font-size:13px;color:var(--text2);margin-bottom:24px}
+.plan-features{list-style:none;text-align:right;margin-bottom:28px}
+.plan-features li{padding:8px 0;font-size:14px;border-bottom:1px solid var(--border);color:var(--text2)}
+.plan-features li:last-child{border:none}
+.plan-features .yes{color:var(--text)}
+.plan-features .no{opacity:.4;text-decoration:line-through}
+.btn-plan{display:block;width:100%;padding:13px;border-radius:10px;font-size:15px;font-weight:700;text-decoration:none;transition:.2s;border:none;cursor:pointer;font-family:inherit}
+.btn-plan-primary{background:var(--green);color:#fff}
+.btn-plan-primary:hover{background:var(--green-dark)}
+.btn-plan-outline{background:transparent;color:var(--green);border:2px solid var(--green)}
+.btn-plan-outline:hover{background:var(--green-light)}
+
+
+/* ── CTA ─────────────────────────────────────── */
+#cta{background:linear-gradient(135deg,#1b5e20 0%,#16a34a 100%);text-align:center;padding:80px 24px}
+#cta .section-title{color:#fff}
+#cta .section-sub{color:rgba(255,255,255,.8)}
+.cta-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:32px}
+.btn-cta-wa{background:#fff;color:var(--green-dark);padding:15px 36px;border-radius:30px;font-size:16px;font-weight:800;text-decoration:none;display:flex;align-items:center;gap:10px;transition:.2s}
+.btn-cta-wa:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.btn-cta-outline{background:transparent;color:#fff;border:2px solid rgba(255,255,255,.5);padding:15px 36px;border-radius:30px;font-size:16px;font-weight:700;text-decoration:none;cursor:pointer;transition:.2s;font-family:inherit}
+.btn-cta-outline:hover{background:rgba(255,255,255,.1);border-color:#fff}
+
+/* ── Footer ──────────────────────────────────── */
+footer{background:var(--green-dark);color:rgba(255,255,255,.7);text-align:center;padding:28px 24px;font-size:13px}
+footer a{color:var(--wa);text-decoration:none}
+
+/* ── Subscribe Modal ─────────────────────────── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:600px){.overlay{align-items:center}}
+.modal{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:500px;padding:28px 24px 32px;max-height:90vh;overflow-y:auto}
+@media(min-width:600px){.modal{border-radius:20px}}
+.modal-title{font-size:20px;font-weight:800;margin-bottom:6px}
+.modal-sub{font-size:14px;color:var(--text2);margin-bottom:24px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text)}
+.field input,.field select{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;direction:rtl;outline:none;transition:.2s}
+.field input:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(22,163,74,.15)}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.btn-modal-primary{flex:1;background:var(--wa);color:#fff;border:none;padding:13px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:.2s}
+.btn-modal-primary:hover{background:var(--wa-dark)}
+.btn-modal-cancel{padding:13px 20px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--text2);font-size:14px;cursor:pointer;font-family:inherit}
+
+/* ── Responsive ──────────────────────────────── */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .hamburger{display:flex}
+  section{padding:56px 16px}
+  .section-sub{font-size:14px;margin-bottom:32px}
+
+  /* Steps */
+  .steps{grid-template-columns:1fr;gap:20px}
+  .step-arrow{display:none}
+  .step{padding:24px 18px}
+
+  /* Demo */
+  .demo-wrap{grid-template-columns:1fr;gap:24px}
+  .demo-info{text-align:center}
+  .demo-features{text-align:right}
+  .wa-widget{max-width:100%}
+
+  /* Plans — horizontal scroll for comparison */
+  .plans{
+    display:flex;overflow-x:auto;gap:16px;padding-bottom:12px;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;margin-top:32px;
+  }
+  .plans::-webkit-scrollbar{display:none}
+  .plan{min-width:260px;flex-shrink:0;scroll-snap-align:center}
+  .plan.featured{order:-1;border-color:var(--green)}
+
+  /* Hero */
+  .hero-stats{gap:16px}
+  .hero-stat .num{font-size:22px}
+  .hero-btns{flex-direction:column;align-items:center}
+  .btn-hero-primary,.btn-hero-outline{width:100%;max-width:300px;text-align:center}
+
+  /* CTA */
+  .cta-btns{flex-direction:column;align-items:center}
+  .btn-cta-wa,.btn-cta-outline{width:100%;max-width:320px;justify-content:center}
+}
+@media(max-width:480px){
+  .hero h1{font-size:26px}
+  .plan{min-width:240px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ NAVBAR ══════════════ -->
+<nav>
+  <div class="nav-inner">
+    <a class="logo" href="#">🤖 <span>ثواني | Thawani</span></a>
+    <ul class="nav-links">
+      <li><a href="#how">كيف يعمل</a></li>
+      <li><a href="#demo">تجربة البوت</a></li>
+      <li><a href="#pricing">الباقات</a></li>
+      <li><a href="#cta">تواصل معنا</a></li>
+    </ul>
+    <a class="nav-cta" href="#pricing">ابدأ الآن 🚀</a>
+    <button class="hamburger" onclick="toggleMenu()" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#how" onclick="toggleMenu()">كيف يعمل</a>
+    <a href="#demo" onclick="toggleMenu()">تجربة البوت</a>
+    <a href="#pricing" onclick="toggleMenu()">الباقات</a>
+    <a href="#cta" onclick="toggleMenu()">تواصل معنا</a>
+    <a href="#pricing" onclick="toggleMenu()" style="background:var(--wa);color:#fff;text-align:center;border-radius:10px;margin-top:8px;font-weight:700">ابدأ الآن 🚀</a>
+  </div>
+</nav>
+
+<!-- ══════════════ HERO ══════════════ -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">✨ بدون تعقيدات Meta — ربط فوري بكود واحد</div>
+    <h1>بوت واتساب ذكي<br><span class="hl">يُضاعف مبيعاتك</span> 🚀</h1>
+    <p>استقبل الطلبات تلقائياً على واتساب لمطعمك أو كافيهك — ربطه برقمك في 5 دقائق فقط، بدون أي تعقيد تقني</p>
+    <div class="hero-btns">
+      <a class="btn-hero-primary" href="#demo">🎮 جرّب البوت الآن</a>
+      <a class="btn-hero-outline" href="#how">كيف يعمل؟ ▾</a>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="num">+50</div><div class="lbl">متجر مسجّل</div></div>
+      <div class="hero-stat"><div class="num">5 دق</div><div class="lbl">وقت الإعداد</div></div>
+      <div class="hero-stat"><div class="num">24/7</div><div class="lbl">البوت يعمل دائماً</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ HOW IT WORKS ══════════════ -->
+<section id="how">
+  <div class="container">
+    <div style="text-align:center">
+      <div class="section-tag">🛠️ طريقة العمل</div>
+      <h2 class="section-title">ثلاث خطوات فقط وبوتك جاهز</h2>
+      <p class="section-sub">أبسط طريقة لتشغيل بوت واتساب احترافي — بدون خبرة تقنية</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-icon">📋</div>
+        <h3>اشترك واختر باقتك</h3>
+        <p>تواصل معنا على واتساب، اختر الباقة المناسبة لعملك، وحدّد رقم الواتساب الذي تريد تشغيل البوت عليه</p>
+      </div>
+      <div class="step">
+        <div class="step-arrow">←</div>
+        <div class="step-num">2</div>
+        <div class="step-icon">🔗</div>
+        <h3>اربط رقمك في دقيقة</h3>
+        <p>نرسل لك كود مكوّن من 8 أحرف — تُدخله في واتساب تحت "الأجهزة المرتبطة" — انتهى، البوت متصل برقمك الأصلي</p>
+      </div>
+      <div class="step">
+        <div class="step-arrow">←</div>
+        <div class="step-num">3</div>
+        <div class="step-icon">🎉</div>
+        <h3>استلم طلباتك وأنت نايم</h3>
+        <p>البوت يعرض منيوك، يستقبل الطلبات، يؤكدها، ويُشعرك فوراً — أنت تدير كل شيء من لوحة تحكم واضحة</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DEMO ══════════════ -->
+<section id="demo">
+  <div class="container">
+    <div style="text-align:center">
+      <div class="section-tag">🎮 تجربة مباشرة</div>
+      <h2 class="section-title">جرّب البوت بنفسك الآن</h2>
+      <p class="section-sub">هذا البوت الحقيقي — تكلّم معه كأنك عميل في مقهى</p>
+    </div>
+    <div class="demo-wrap">
+      <div class="demo-info">
+        <h3>هذا ما يراه عملاؤك كل يوم</h3>
+        <p>عميلك يكتب للرقم → البوت يرحب ويعرض القائمة → العميل يختار ويطلب → أنت تستقبل الطلب فوراً في لوحة التحكم</p>
+        <ul class="demo-features">
+          <li>استقبال طلبات غير محدودة 24 ساعة</li>
+          <li>عرض المنيو بشكل تفاعلي ومنظم</li>
+          <li>تأكيد الطلب مع ملخص كامل للعميل</li>
+          <li>إشعار فوري لصاحب المطعم</li>
+          <li>لوحة تحكم لإدارة وتتبع الطلبات</li>
+        </ul>
+        <a class="btn-hero-primary" href="#pricing" style="display:inline-block">ابدأ الآن بباقتك →</a>
+      </div>
+
+      <!-- WhatsApp Widget -->
+      <div>
+        <div class="wa-widget">
+          <div class="wa-header">
+            <div class="wa-avatar">☕</div>
+            <div class="wa-info">
+              <strong>مقهى النخيل 🌴</strong>
+              <small><span class="wa-online"></span>متصل الآن</small>
+            </div>
+          </div>
+          <div class="wa-msgs" id="waMsgs">
+            <div style="text-align:center;padding:20px 0">
+              <button class="btn-start-demo" id="startDemo">▶️ ابدأ التجربة</button>
+              <p style="font-size:12px;color:#aaa;margin-top:8px">اضغط لبدء محادثة تجريبية</p>
+            </div>
+          </div>
+          <div class="wa-input-row">
+            <button class="wa-send" id="waSendBtn" onclick="sendDemoMsg()" disabled>➤</button>
+            <input class="wa-input" id="waInput" placeholder="اكتب رسالتك..." disabled onkeydown="if(event.key==='Enter')sendDemoMsg()">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ PRICING ══════════════ -->
+<section id="pricing">
+  <div class="container">
+    <div style="text-align:center">
+      <div class="section-tag">💰 الباقات</div>
+      <h2 class="section-title">اختر الباقة المناسبة لمشروعك</h2>
+      <p class="section-sub">جميع الباقات تشمل ربط واتساب فوري ولوحة تحكم كاملة — بدون رسوم إعداد</p>
+    </div>
+    <div class="plans" id="plansGrid">
+      <!-- Loaded by JS or fallback below -->
+    </div>
+    <p style="text-align:center;margin-top:24px;font-size:13px;color:var(--text2)">الأسعار بالريال السعودي · التجديد شهري · إلغاء في أي وقت</p>
+  </div>
+</section>
+
+<!-- ══════════════ CTA ══════════════ -->
+<section id="cta">
+  <div class="container">
+    <div class="section-tag" style="background:rgba(37,211,102,.2);color:var(--wa)">🚀 ابدأ اليوم</div>
+    <h2 class="section-title">جاهز تضاعف مبيعاتك؟</h2>
+    <p class="section-sub">تواصل معنا الآن — نُعدّ بوتك ونربطه برقمك في نفس اليوم</p>
+    <div class="cta-btns">
+      <a class="btn-cta-wa" href="https://wa.me/966508572902?text=مرحباً%20أبو%20حاتم%20،%20أريد%20الاشتراك%20في%20منصة%20ثواني | Thawani" target="_blank">
+        <span style="font-size:22px">📱</span> تواصل على واتساب
+      </a>
+      <button class="btn-cta-outline" onclick="openSubscribeModal()">📋 اشترك الآن</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer>
+  <p>© 2026 ثواني | Thawani — جميع الحقوق محفوظة &nbsp;·&nbsp; <a href="https://wa.me/966508572902">تواصل معنا</a></p>
+</footer>
+
+<!-- ══════════════ SUBSCRIBE MODAL ══════════════ -->
+<div class="overlay" id="subscribeModal" style="display:none" onclick="if(event.target===this)closeSubscribeModal()">
+  <div class="modal">
+    <h2 class="modal-title">📋 طلب الاشتراك</h2>
+    <p class="modal-sub">أرسل بياناتك وسنتواصل معك فوراً لإتمام الإعداد</p>
+
+    <div class="field">
+      <label>اسمك الكريم</label>
+      <input id="sub_name" type="text" placeholder="">
+    </div>
+    <div class="field">
+      <label>رقم واتساب للتواصل</label>
+      <input id="sub_phone" type="tel" placeholder="" style="direction:ltr">
+    </div>
+    <div class="field">
+      <label>نوع مشروعك</label>
+      <select id="sub_type">
+        <option value="">اختر...</option>
+        <option>مطعم 🍽️</option>
+        <option>كافيه ☕</option>
+        <option>محل بقالة 🛒</option>
+        <option>مخبز 🥐</option>
+        <option>متجر ملابس 👕</option>
+        <option>أخرى</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>الباقة المطلوبة</label>
+      <select id="sub_plan">
+        <option value="">اختر...</option>
+        <option>🌱 الأساسية</option>
+        <option>⭐ الاحترافية</option>
+        <option>👑 المتقدمة</option>
+      </select>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeSubscribeModal()">إلغاء</button>
+      <button class="btn-modal-primary" onclick="submitSubscription()">📱 أرسل عبر واتساب</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Navbar ────────────────────────────────────
+function toggleMenu(){
+  const m = document.getElementById("mobileNav");
+  m.style.display = m.style.display === "block" ? "none" : "block";
+}
+
+// ── Load Pricing ─────────────────────────────
+const DEFAULT_PLANS_DATA = {
+  starter: { emoji:"🌱", nameAr:"الأساسية", price:80, featured:false,
+    displayFeatures:[
+      {yes:true,text:"استقبال طلبات غير محدودة"},{yes:true,text:"قائمة منتجات تفاعلية"},
+      {yes:true,text:"لوحة تحكم للطلبات"},{yes:true,text:"إشعارات فورية للمالك"},
+      {yes:false,text:"فواتير صور تلقائية"},{yes:false,text:"سجل عملاء VIP"},
+      {yes:false,text:"دفع إلكتروني بالفيزا"},
+    ]},
+  pro: { emoji:"⭐", nameAr:"الاحترافية", price:150, featured:true, badge:"الأكثر طلباً",
+    displayFeatures:[
+      {yes:true,text:"كل مميزات الأساسية"},{yes:true,text:"فاتورة صورة تُرسل للعميل"},
+      {yes:true,text:"سجل عملاء VIP كامل"},{yes:true,text:"تقارير مبيعات يومية"},
+      {yes:false,text:"دفع إلكتروني بالفيزا"},
+    ]},
+  premium: { emoji:"👑", nameAr:"المتقدمة", price:250, featured:false,
+    displayFeatures:[
+      {yes:true,text:"كل مميزات الاحترافية"},{yes:true,text:"دفع إلكتروني بالفيزا"},
+      {yes:true,text:"ربط بوابة الدفع"},{yes:true,text:"أولوية الدعم الفني 24/7"},
+    ]},
+};
+
+async function loadPricing() {
+  let planData = JSON.parse(JSON.stringify(DEFAULT_PLANS_DATA));
+  try {
+    const r = await fetch("/api/plans");
+    if (r.ok) {
+      const d = await r.json();
+      const ap = d.plans || {};
+      ["starter","pro","premium"].forEach(id => {
+        if (!ap[id]) return;
+        if (ap[id].price  != null)  planData[id].price  = ap[id].price;
+        if (ap[id].emoji)           planData[id].emoji  = ap[id].emoji;
+        if (ap[id].nameAr)          planData[id].nameAr = ap[id].nameAr;
+        if (Array.isArray(ap[id].displayFeatures) && ap[id].displayFeatures.length) {
+          planData[id].displayFeatures = ap[id].displayFeatures.map(f =>
+            typeof f === "string" ? {yes:true, text:f}
+              : {yes:(f.enabled ?? f.included) !== false, text:f.text||""}
+          ).filter(f => f.text);
+        }
+      });
+      if (d.planPrices) {
+        ["starter","pro","premium"].forEach(id => {
+          if (d.planPrices[id] != null) planData[id].price = d.planPrices[id];
+        });
+      }
+    }
+  } catch {}
+  renderPlans(planData);
+}
+
+function renderPlans(planData) {
+  const order = [
+    { id:"starter", ...planData.starter },
+    { id:"pro",     ...planData.pro,     badge: planData.pro?.badge || "الأكثر طلباً" },
+    { id:"premium", ...planData.premium },
+  ];
+
+  document.getElementById("plansGrid").innerHTML = order.map(plan => `
+    <div class="plan${plan.featured ? " featured" : ""}">
+      ${plan.featured ? `<div class="plan-badge">${plan.badge} 🔥</div>` : ""}
+      <div class="plan-emoji">${plan.emoji}</div>
+      <h3>${plan.nameAr}</h3>
+      <div class="plan-price">${plan.price}<sub> ر.س</sub></div>
+      <div class="plan-period">في الشهر</div>
+      <ul class="plan-features">
+        ${(plan.displayFeatures||[]).map(f => `<li class="${f.yes?"yes":"no"}">${f.yes?"✅":"❌"} ${f.text}</li>`).join("")}
+      </ul>
+      <button class="${plan.featured ? "btn-plan btn-plan-primary" : "btn-plan btn-plan-outline"}"
+        onclick="openSubscribeModal('${plan.nameAr}')">
+        اشترك الآن ←
+      </button>
+    </div>
+  `).join("");
+}
+
+// ── Bot Demo ──────────────────────────────────
+let demoStarted = false;
+const demoUser  = "demo_" + Math.random().toString(36).slice(2,8);
+
+document.getElementById("startDemo").addEventListener("click", startDemo);
+
+async function startDemo() {
+  if (demoStarted) return;
+  demoStarted = true;
+  document.getElementById("startDemo").parentElement.remove();
+
+  const inp = document.getElementById("waInput");
+  const btn = document.getElementById("waSendBtn");
+  inp.disabled = false;
+  btn.disabled = false;
+  inp.focus();
+
+  // Reset session
+  await fetch("/api/sim/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ from: demoUser }) });
+
+  // Send initial trigger
+  await sendToBot("مرحبا");
+}
+
+async function sendDemoMsg() {
+  const inp = document.getElementById("waInput");
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = "";
+
+  appendMsg(text, "user");
+  await sendToBot(text);
+}
+
+async function sendToBot(text) {
+  showTyping(true);
+  try {
+    const r = await fetch("/api/sim", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ from: demoUser, message: text }),
+    });
+    const data = await r.json();
+    showTyping(false);
+    if (data.messages) {
+      for (const m of data.messages) {
+        const body = m.text?.body || m.image?.caption || m.body || "";
+        if (body) appendMsg(body, "bot");
+      }
+    }
+  } catch {
+    showTyping(false);
+    appendMsg("عذراً، البوت التجريبي غير متاح حالياً. يمكنك التواصل معنا مباشرة.", "bot");
+  }
+}
+
+function appendMsg(text, type) {
+  const box = document.getElementById("waMsgs");
+  const div = document.createElement("div");
+  div.className = "wa-msg " + type;
+  const time = new Date().toLocaleTimeString("ar", { hour:"2-digit", minute:"2-digit" });
+  div.innerHTML = text.replace(/\n/g,"<br>") + `<span class="time">${time}</span>`;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+function showTyping(show) {
+  let el = document.getElementById("typingEl");
+  if (show && !el) {
+    el = document.createElement("div");
+    el.id = "typingEl";
+    el.className = "typing-indicator";
+    el.style.display = "flex";
+    el.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+    document.getElementById("waMsgs").appendChild(el);
+    document.getElementById("waMsgs").scrollTop = 9999;
+  } else if (!show && el) {
+    el.remove();
+  }
+}
+
+// ── Subscribe Modal ───────────────────────────
+function openSubscribeModal(planName) {
+  if (planName) {
+    const sel = document.getElementById("sub_plan");
+    for (const opt of sel.options) {
+      if (opt.text.includes(planName.replace(/[🌱⭐👑]/g,"").trim())) { sel.value = opt.value; break; }
+    }
+    // Find by partial match
+    const planMap = { "الأساسية": "🌱 الأساسية", "الاحترافية": "⭐ الاحترافية", "المتقدمة": "👑 المتقدمة" };
+    for (const opt of sel.options) {
+      if (opt.text === (planMap[planName.replace(/[🌱⭐👑\s]/g,"").trim()] || planName)) {
+        sel.value = opt.value; break;
+      }
+    }
+  }
+  document.getElementById("subscribeModal").style.display = "flex";
+}
+
+function closeSubscribeModal() {
+  document.getElementById("subscribeModal").style.display = "none";
+}
+
+function submitSubscription() {
+  const name  = document.getElementById("sub_name").value.trim();
+  const phone = document.getElementById("sub_phone").value.trim();
+  const type  = document.getElementById("sub_type").value;
+  const plan  = document.getElementById("sub_plan").value;
+
+  if (!name || !phone) {
+    alert("من فضلك أدخل اسمك ورقم واتساب");
+    return;
+  }
+
+  const msg = encodeURIComponent(
+    `مرحباً أبو حاتم 👋\n\nأريد الاشتراك في منصة ثواني | Thawani:\n\n` +
+    `👤 الاسم: ${name}\n` +
+    `📱 رقمي: ${phone}\n` +
+    `🏪 نوع المشروع: ${type || "—"}\n` +
+    `📦 الباقة: ${plan || "—"}\n\n` +
+    `أرجو التواصل معي لإتمام الإعداد 🙏`
+  );
+
+  window.open(`https://wa.me/966508572902?text=${msg}`, "_blank");
+  closeSubscribeModal();
+}
+
+// ── Init ──────────────────────────────────────
+loadPricing();
+
+// Auto-scroll to #demo if navigated from external link
+if (location.hash === "#demo") {
+  setTimeout(() => {
+    document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" });
+  }, 400);
+}
+
+// Close mobile nav when clicking a link
+document.querySelectorAll("#mobileNav a").forEach(a => {
+  a.addEventListener("click", () => {
+    document.getElementById("mobileNav").style.display = "none";
+  });
+});
+</script>
+</body>
+</html>

@@ -355,7 +355,8 @@ header{background:var(--green-dark);padding:14px 20px;display:flex;align-items:c
     <div class="chat-actions">
       <button class="btn-sm" onclick="resetChat()">🔄 إعادة</button>
       <button class="btn-sm" onclick="sendChat('مرحبا')">👋 مرحبا</button>
-      <button class="btn-sm" onclick="sendChat('القائمة')">🍽️ القائمة</button>
+      <button class="btn-sm" onclick="sendChat('القائمة')">📋 القائمة</button>
+      <button class="btn-sm" onclick="sendChat('الطلبات')">🛒 طلب</button>
     </div>
 
     <!-- Real WhatsApp test -->
@@ -374,8 +375,8 @@ header{background:var(--green-dark);padding:14px 20px;display:flex;align-items:c
     <!-- CTA -->
     <div class="cta-card">
       <h3>أعجبك البوت؟ 🌟</h3>
-      <p>احصل على نسختك الخاصة مع قائمة منتجاتك — ابدأ بـ 80 ريال/شهر فقط</p>
-      <a href="platform.html"><button class="btn-cta">🚀 احصل على نسختك الآن ←</button></a>
+      <p>احصل على نسختك الخاصة لنشاطك التجاري — ابدأ بـ 80 ريال/شهر فقط</p>
+      <a href="https://61465.github.io/cafe/docs/"><button class="btn-cta">🚀 احصل على نسختك الآن ←</button></a>
     </div>
 
     <button class="btn btn-outline" style="margin-top:14px" onclick="resetAll()">← تجربة جديدة</button>
@@ -388,7 +389,7 @@ header{background:var(--green-dark);padding:14px 20px;display:flex;align-items:c
       <h3>انتهت مدة التجربة</h3>
       <p>انقضت الـ 45 دقيقة وتم فصل الجلسة تلقائياً.<br>هل أعجبك البوت؟ احصل على نسختك الدائمة!</p>
       <div class="expired-btns">
-        <a href="platform.html"><button class="btn-white">⭐ اشترك الآن ←</button></a>
+        <a href="https://61465.github.io/cafe/docs/"><button class="btn-white">⭐ اشترك الآن ←</button></a>
         <button class="btn-outline-white" onclick="resetAll()">🔄 تجربة جديدة</button>
       </div>
     </div>
