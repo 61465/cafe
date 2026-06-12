@@ -97,13 +97,16 @@ const apiLimiter = rateLimit({
   message: { error: "طلبات كثيرة، حاول بعد قليل" },
 });
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 10, // 10 attempts per 15 min
+  windowMs: 15 * 60 * 1000, max: 20, // 20 attempts per 15 min (skipSuccess → only failures count)
   standardHeaders: true, legacyHeaders: false,
-  message: { error: "محاولات كثيرة، انتظر 15 دقيقة" },
+  message: { error: "محاولات دخول كثيرة، انتظر 15 دقيقة" },
+  skipSuccessfulRequests: true,
 });
 app.use("/store/",        apiLimiter);
 app.use("/api/",          apiLimiter);
 app.use("/master/login",  loginLimiter);
+// تطبيق login limiter على /store/login بشكل صريح (لتفادي 429 على فتح صفحات متعددة)
+app.use("/store/login",   loginLimiter);
 
 app.use(express.json({ limit: "60mb" })); // raised for video uploads (videos enforce 50MB inside endpoint)
 app.use(express.raw({ type: "video/*", limit: "60mb" }));

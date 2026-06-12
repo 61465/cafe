@@ -47,16 +47,45 @@ const router    = express.Router();
 const DATA_DIR  = path.join(__dirname, "..", "data");
 const STORES_FILE = path.join(DATA_DIR, "stores.json");
 
-// ─── In-memory sessions: token → { storeId, createdAt } ─────────────────────
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
-const sessions = new Map();
+// ─── Persistent sessions: token → { storeId, lastActivity, createdAt } ────────
+// Sliding TTL: 7 days من آخر activity (لا absolute)
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const STORE_SESSIONS_FILE = path.join(DATA_DIR, "sessions", "store-sessions.json");
+
+function _loadStoreSessions() {
+  try {
+    if (!fs.existsSync(path.dirname(STORE_SESSIONS_FILE))) fs.mkdirSync(path.dirname(STORE_SESSIONS_FILE), { recursive: true });
+    if (!fs.existsSync(STORE_SESSIONS_FILE)) return new Map();
+    const data = JSON.parse(fs.readFileSync(STORE_SESSIONS_FILE, "utf8"));
+    const m = new Map(Object.entries(data));
+    // clean expired on load
+    const cutoff = Date.now() - SESSION_TTL_MS;
+    for (const [k, v] of m) if ((v.lastActivity || v.createdAt) < cutoff) m.delete(k);
+    return m;
+  } catch { return new Map(); }
+}
+const sessions = _loadStoreSessions();
+
+let _saveStoreSessionsTimer = null;
+function _saveStoreSessions() {
+  if (_saveStoreSessionsTimer) return;
+  _saveStoreSessionsTimer = setTimeout(() => {
+    _saveStoreSessionsTimer = null;
+    try {
+      const obj = {}; for (const [k, v] of sessions) obj[k] = v;
+      fs.writeFileSync(STORE_SESSIONS_FILE, JSON.stringify(obj));
+    } catch (e) { console.warn("[sessions] save failed:", e.message); }
+  }, 500);
+}
 
 // Clean expired sessions every hour
 setInterval(() => {
   const cutoff = Date.now() - SESSION_TTL_MS;
+  let removed = 0;
   for (const [token, val] of sessions) {
-    if (val.createdAt < cutoff) sessions.delete(token);
+    if ((val.lastActivity || val.createdAt) < cutoff) { sessions.delete(token); removed++; }
   }
+  if (removed > 0) _saveStoreSessions();
 }, 60 * 60 * 1000);
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -93,15 +122,20 @@ function readOrders(storeId) {
     .filter(Boolean);
 }
 
-// ─── Auth middleware ──────────────────────────────────────────────────────────
+// ─── Auth middleware (sliding TTL — تجدّد عند كل طلب) ───────────────────────
 function auth(req, res, next) {
   const token = req.headers["x-store-token"];
   const entry = sessions.get(token);
   if (!token || !entry) return res.status(401).json({ error: "يرجى تسجيل الدخول" });
-  if (Date.now() - entry.createdAt > SESSION_TTL_MS) {
+  const lastSeen = entry.lastActivity || entry.createdAt;
+  if (Date.now() - lastSeen > SESSION_TTL_MS) {
     sessions.delete(token);
+    _saveStoreSessions();
     return res.status(401).json({ error: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً" });
   }
+  // Sliding renewal: حدّث lastActivity
+  entry.lastActivity = Date.now();
+  _saveStoreSessions();
   req.storeId = entry.storeId;
   next();
 }
@@ -160,7 +194,8 @@ router.post("/store/login", async (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { storeId, createdAt: Date.now() });
+  sessions.set(token, { storeId, createdAt: Date.now(), lastActivity: Date.now() });
+  _saveStoreSessions();
   audit({ actor: { type: "store", id: storeId }, action: "login.success" }, req);
   res.json({ ok: true, token, storeId, storeName });
 });
@@ -213,7 +248,8 @@ router.post("/store/firebase-login", async (req, res) => {
     }
 
     const token = crypto.randomBytes(32).toString("hex");
-    sessions.set(token, { storeId: store.id, createdAt: Date.now() });
+    sessions.set(token, { storeId: store.id, createdAt: Date.now(), lastActivity: Date.now() });
+      _saveStoreSessions();
     res.json({ ok: true, token, storeId: store.id, storeName: store.storeName });
   } catch (err) {
     console.error("firebase-login error:", err.message);
@@ -1585,7 +1621,8 @@ router.post("/store/wa-disconnect", auth, async (req, res) => {
 // ─── Create store token (for master impersonation) ───────────────────────────
 function createStoreToken(storeId) {
   const token = crypto.randomBytes(32).toString("hex");
-  sessions.set(token, { storeId, createdAt: Date.now() });
+  sessions.set(token, { storeId, createdAt: Date.now(), lastActivity: Date.now() });
+  _saveStoreSessions();
   return token;
 }
 

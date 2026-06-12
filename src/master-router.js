@@ -43,10 +43,10 @@ const { generateAdminConfig } = require("./ai-admin-config");
 const twoFA        = require("./two-fa");
 const { audit }    = require("./audit-log");
 
-// stricter rate limiter for master login (5 attempts / 15min / IP)
+// rate limiter for master login (15 attempts / 15min / IP — skipSuccess prevents false-positives)
 const masterLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 15,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "محاولات دخول كثيرة، حاول بعد 15 دقيقة" },
@@ -268,15 +268,45 @@ function writeOwnerSettings(data) {
   fs.writeFileSync(OWNER_SETTINGS_FILE, JSON.stringify(data, null, 2));
 }
 
-// ─── Session store (in-memory) — 24h TTL ─────────────────────────────────────
-const MASTER_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const sessions = new Map();
+// ─── Persistent session store — 7 days sliding TTL ───────────────────────────
+const MASTER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MASTER_SESSIONS_FILE = path.join(DATA_DIR, "sessions", "master-sessions.json");
+
+function _loadMasterSessions() {
+  try {
+    if (!fs.existsSync(path.dirname(MASTER_SESSIONS_FILE))) fs.mkdirSync(path.dirname(MASTER_SESSIONS_FILE), { recursive: true });
+    if (!fs.existsSync(MASTER_SESSIONS_FILE)) return new Map();
+    const data = JSON.parse(fs.readFileSync(MASTER_SESSIONS_FILE, "utf8"));
+    const m = new Map();
+    const cutoff = Date.now() - MASTER_SESSION_TTL_MS;
+    for (const [k, v] of Object.entries(data)) {
+      const ts = typeof v === "number" ? v : (v.lastActivity || v.ts);
+      if (ts > cutoff) m.set(k, ts);
+    }
+    return m;
+  } catch { return new Map(); }
+}
+const sessions = _loadMasterSessions();
+
+let _saveMasterTimer = null;
+function _saveMasterSessions() {
+  if (_saveMasterTimer) return;
+  _saveMasterTimer = setTimeout(() => {
+    _saveMasterTimer = null;
+    try {
+      const obj = {}; for (const [k, ts] of sessions) obj[k] = ts;
+      fs.writeFileSync(MASTER_SESSIONS_FILE, JSON.stringify(obj));
+    } catch (e) { console.warn("[master-sessions] save failed:", e.message); }
+  }, 500);
+}
 
 setInterval(() => {
   const cutoff = Date.now() - MASTER_SESSION_TTL_MS;
+  let removed = 0;
   for (const [token, ts] of sessions) {
-    if (ts < cutoff) sessions.delete(token);
+    if (ts < cutoff) { sessions.delete(token); removed++; }
   }
+  if (removed > 0) _saveMasterSessions();
 }, 60 * 60 * 1000);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -310,15 +340,19 @@ function readStoreOrders(storeId) {
     .filter(Boolean);
 }
 
-// ─── Auth middleware ──────────────────────────────────────────────────────────
+// ─── Auth middleware (sliding TTL — renews on each request) ───────────────────
 function auth(req, res, next) {
   const token = req.headers["x-master-token"];
   const ts = sessions.get(token);
   if (!token || ts === undefined) return res.status(401).json({ error: "يرجى تسجيل الدخول" });
   if (Date.now() - ts > MASTER_SESSION_TTL_MS) {
     sessions.delete(token);
+    _saveMasterSessions();
     return res.status(401).json({ error: "انتهت الجلسة، يرجى تسجيل الدخول مجدداً" });
   }
+  // Sliding renewal
+  sessions.set(token, Date.now());
+  _saveMasterSessions();
   next();
 }
 
@@ -375,6 +409,7 @@ router.post("/master/login", masterLoginLimiter, async (req, res) => {
 
   const token = crypto.randomBytes(32).toString("hex");
   sessions.set(token, Date.now());
+  _saveMasterSessions();
   audit({ actor: { type: "master" }, action: "login.success" }, req);
   res.json({ ok: true, token, twoFAEnabled: twoFA.isEnabled("master") });
 });
