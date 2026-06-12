@@ -1976,11 +1976,27 @@ async function handleProductSelection(from, msg, session) {
 
   sessionManager.update(from, { step: "QUANTITY", pendingProduct: product });
 
-  // Send product image if available
-  const imgUrl = product.imageUrl || product.image_url || null;
-  if (imgUrl) {
-    const full = imgUrl.startsWith("http") ? imgUrl : `${PUBLIC_URL.replace(/\/$/, "")}${imgUrl}`;
-    await sendImage(from, full, `*${product.name}*\n${product.description || ""}\n💰 ${product.price} ${currency}`);
+  // ⭐ Send product images — يدعم الصور المتعددة
+  // الصورة الأولى تحوي تفاصيل المنتج، الباقي بـ caption صغير
+  const imageList = Array.isArray(product.images) && product.images.length
+    ? product.images
+    : (product.imageUrl || product.image_url ? [product.imageUrl || product.image_url] : []);
+
+  if (imageList.length > 0) {
+    const PUB = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+    const _abs = u => u.startsWith("http") ? u : `${PUB}${u}`;
+
+    for (let i = 0; i < Math.min(imageList.length, 5); i++) {
+      const url = _abs(imageList[i]);
+      const caption = i === 0
+        ? `*${product.name}*\n${product.description || ""}\n💰 ${product.price} ${currency}` +
+          (imageList.length > 1 ? `\n\n📷 ${imageList.length} صور — اسحب لاستعراضها` : "")
+        : `صورة ${i + 1} من ${imageList.length}`;
+      try { await sendImage(from, url, caption); }
+      catch (e) { console.warn("[product-img] failed:", e.message); break; }
+      // small delay between images لتجنّب rate-limit الواتساب
+      if (i < imageList.length - 1) await new Promise(r => setTimeout(r, 800));
+    }
   }
 
   return sendList(from, {
@@ -3491,12 +3507,18 @@ app.get(["/order/:token", "/o/:token", "/:token([a-zA-Z0-9]{4,12})"], (req, res)
     if (lowStock && badges.length < 2) badges.push({ kind: "low", label: `متبقي ${stockNum}`, emoji: "⚠️" });
     if (isNew && badges.length < 2) badges.push({ kind: "new", label: "جديد", emoji: "🆕" });
 
+    // ⭐ معالجة الصور المتعددة — نُرجع array كاملة
+    const productImages = Array.isArray(p.images) && p.images.length
+      ? p.images.map(_absUrl).filter(Boolean)
+      : (p.imageUrl ? [_absUrl(p.imageUrl)].filter(Boolean) : []);
+
     productData[String(p.id)] = {
       name:           p.name,
       description:    p.description || "",
       price:          Number(p.price) || 0,
       originalPrice:  originalPrice > p.price ? originalPrice : null,
-      imageUrl:       _absUrl(p.imageUrl),
+      imageUrl:       productImages[0] || null,  // backward compat
+      images:         productImages,             // ⭐ array كامل
       video:          _videoEmbed(p.videoUrl),
       videoCaption:   p.videoCaption || "",
       categoryId:     String(p.category || ""),
@@ -4439,6 +4461,14 @@ CATS.forEach(function(cat, ci) {
     // Image wrapper
     var imgDiv = document.createElement('div');
     imgDiv.className = 'c-img';
+    // ⭐ Badge "+N صور" لو في صور إضافية
+    var imgCount = Array.isArray(p.images) ? p.images.length : 0;
+    if (imgCount > 1) {
+      var multiBadge = document.createElement('div');
+      multiBadge.style.cssText = 'position:absolute;inset-block-start:8px;inset-inline-end:8px;background:rgba(0,0,0,0.65);color:#fff;padding:3px 8px;border-radius:12px;font-size:10.5px;font-weight:700;z-index:3;backdrop-filter:blur(6px);display:flex;align-items:center;gap:3px';
+      multiBadge.innerHTML = '📷 ' + imgCount;
+      imgDiv.appendChild(multiBadge);
+    }
     if (p.imageUrl) {
       var img = document.createElement('img');
       img.src = p.imageUrl;
@@ -4806,15 +4836,84 @@ function openProductDetail(pid) {
   _pdState.sizeIdx = 0;
   _hapticTap(15);
 
-  // Hero (image or video toggle)
+  // Hero (image carousel + video toggle)
   var hero = document.getElementById('pdHero');
   hero.innerHTML = '';
   var heroBadges = null;
-  if (p.imageUrl) {
-    var im = document.createElement('img');
-    im.src = p.imageUrl; im.alt = p.name; im.loading = 'lazy';
-    im.onerror = function(){ hero.innerHTML = '<div class="pd-hero-noimg">🍽️</div>'; };
-    hero.appendChild(im);
+
+  // ⭐ Carousel للصور المتعددة
+  var imageList = Array.isArray(p.images) && p.images.length
+    ? p.images
+    : (p.imageUrl ? [p.imageUrl] : []);
+
+  if (imageList.length > 0) {
+    var carousel = document.createElement('div');
+    carousel.className = 'pd-carousel';
+    carousel.style.cssText = 'position:relative;inline-size:100%;block-size:100%;overflow:hidden;border-radius:inherit';
+
+    var track = document.createElement('div');
+    track.className = 'pd-carousel-track';
+    track.style.cssText = 'display:flex;inline-size:100%;block-size:100%;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;';
+
+    imageList.forEach(function(url, idx) {
+      var slide = document.createElement('div');
+      slide.style.cssText = 'flex:0 0 100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;background:#000;position:relative';
+      var im = document.createElement('img');
+      im.src = url; im.alt = p.name + ' - ' + (idx + 1);
+      im.loading = idx === 0 ? 'eager' : 'lazy';
+      im.style.cssText = 'inline-size:100%;block-size:100%;object-fit:cover';
+      im.onerror = function(){ slide.innerHTML = '<div class="pd-hero-noimg">🍽️</div>'; };
+      slide.appendChild(im);
+      track.appendChild(slide);
+    });
+
+    // hide scrollbar in webkit
+    var styleTag = document.getElementById('pd-carousel-style');
+    if (!styleTag) {
+      styleTag = document.createElement('style');
+      styleTag.id = 'pd-carousel-style';
+      styleTag.textContent = '.pd-carousel-track::-webkit-scrollbar{display:none}';
+      document.head.appendChild(styleTag);
+    }
+
+    carousel.appendChild(track);
+
+    // dots indicator (لو > 1 صورة)
+    if (imageList.length > 1) {
+      var dots = document.createElement('div');
+      dots.className = 'pd-carousel-dots';
+      dots.style.cssText = 'position:absolute;inset-block-end:12px;inset-inline:0;display:flex;justify-content:center;gap:6px;z-index:5;pointer-events:none';
+      imageList.forEach(function(_, idx) {
+        var dot = document.createElement('span');
+        dot.style.cssText = 'inline-size:7px;block-size:7px;border-radius:50%;background:rgba(255,255,255,' + (idx === 0 ? '1' : '0.45') + ');box-shadow:0 1px 4px rgba(0,0,0,0.4);transition:background .15s';
+        dots.appendChild(dot);
+      });
+      carousel.appendChild(dots);
+      // sync dot with scroll
+      track.addEventListener('scroll', function() {
+        var w = track.clientWidth;
+        if (w === 0) return;
+        var current = Math.round(track.scrollLeft / w);
+        Array.from(dots.children).forEach(function(d, i) {
+          d.style.background = 'rgba(255,255,255,' + (i === current ? '1' : '0.45') + ')';
+        });
+      }, { passive: true });
+
+      // image counter (top-left)
+      var counter = document.createElement('div');
+      counter.className = 'pd-carousel-counter';
+      counter.style.cssText = 'position:absolute;inset-block-start:12px;inset-inline-start:12px;background:rgba(0,0,0,0.55);color:#fff;padding:4px 10px;border-radius:14px;font-size:11.5px;font-weight:700;z-index:5;backdrop-filter:blur(6px);';
+      counter.textContent = '1 / ' + imageList.length;
+      carousel.appendChild(counter);
+      track.addEventListener('scroll', function() {
+        var w = track.clientWidth;
+        if (w === 0) return;
+        var current = Math.round(track.scrollLeft / w) + 1;
+        counter.textContent = current + ' / ' + imageList.length;
+      }, { passive: true });
+    }
+
+    hero.appendChild(carousel);
   } else {
     hero.innerHTML = '<div class="pd-hero-noimg">🍽️</div>';
   }

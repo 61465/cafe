@@ -1233,21 +1233,24 @@ tr:hover td{background:#fafcfa}
           </div>
         </div>
         <div class="field full">
-          <label>صورة المنتج (اختياري)</label>
+          <label>📷 صور المنتج <span style="color:var(--gray);font-size:12px;font-weight:500">(حتى 10 صور — الأولى تظهر في القائمة)</span></label>
           <input type="hidden" id="pm_curImageUrl">
-          <div class="img-upload-area" onclick="document.getElementById('pm_file').click()">
-            <img id="pm_imgPreview" alt="معاينة الصورة" style="display:none;width:100%;max-height:200px;object-fit:contain">
-            <div id="pm_imgPlaceholder" class="img-placeholder">
-              <span class="ph-icon">📷</span>
-              <span class="ph-text">اضغط لاختيار صورة</span>
-            </div>
+
+          <!-- Gallery الصور الحالية -->
+          <div id="pm_imagesGallery" style="display:flex;gap:10px;flex-wrap:wrap;margin-block-end:10px;min-block-size:0">
+            <!-- تُملأ بـ JS -->
           </div>
-          <input type="file" id="pm_file" accept="image/*" style="display:none" onchange="handleProductImage(this)">
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button type="button" class="btn btn-outline" style="padding:8px 14px;font-size:13px" onclick="document.getElementById('pm_file').click()">📁 اختر صورة</button>
-            <button type="button" class="btn" style="padding:8px 14px;font-size:13px;background:#f3f4f6;color:var(--gray)" onclick="clearProductImage()">🗑️ إزالة</button>
+
+          <!-- زر إضافة صورة -->
+          <div id="pm_addImageBtn" onclick="document.getElementById('pm_file').click()"
+               style="border:2px dashed #d1d5db;border-radius:12px;padding:18px;text-align:center;cursor:pointer;background:#fafafa;transition:all .15s">
+            <div style="font-size:32px;margin-block-end:6px;opacity:.6">📷</div>
+            <div style="font-weight:700;color:#374151;font-size:14px">اضغط لإضافة صورة</div>
+            <div id="pm_imgCounter" style="font-size:11.5px;color:#6b7280;margin-block-start:4px"></div>
           </div>
-          <span class="hint">PNG, JPG, WEBP — حجم أقصى 3MB</span>
+
+          <input type="file" id="pm_file" accept="image/*" multiple style="display:none" onchange="handleProductImages(this)">
+          <span class="hint" style="display:block;margin-block-start:8px">PNG, JPG, WEBP — حجم أقصى 3MB لكل صورة · اسحب لإعادة الترتيب</span>
         </div>
 
         <!-- 🎬 فيديو توضيحي / استعراضي -->
@@ -3095,8 +3098,13 @@ function renderProducts() {
 
   grid.innerHTML = filtered.map(p => {
     const cat = allCategories.find(c => c.id === p.category);
-    const imgHtml = p.imageUrl
-      ? `<img src="${esc(p.imageUrl)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;position:absolute">`
+    const imgCount = Array.isArray(p.images) ? p.images.length : (p.imageUrl ? 1 : 0);
+    const mainImg = p.imageUrl || (p.images && p.images[0]) || null;
+    const imgHtml = mainImg
+      ? `<img src="${esc(mainImg)}" alt="${esc(p.name)}" style="width:100%;height:100%;object-fit:cover;position:absolute">` +
+        (imgCount > 1
+          ? `<div style="position:absolute;inset-block-start:6px;inset-inline-end:6px;background:rgba(0,0,0,.65);color:#fff;padding:2px 7px;border-radius:8px;font-size:10.5px;font-weight:700;backdrop-filter:blur(4px);z-index:2">📷 ${imgCount}</div>`
+          : '')
       : `<div class="no-img">${cat?.emoji || "🍽️"}</div>`;
 
     // بطاقة المخزون: ♾️ لا محدود / ❌ نفذ / ⚠️ متبقي N (≤3) / 📦 N
@@ -3162,6 +3170,8 @@ function openProductModal(id = null) {
   document.getElementById("pm_price").value       = p?.price || "";
   document.getElementById("pm_desc").value        = p?.description || "";
   document.getElementById("pm_curImageUrl").value = p?.imageUrl || "";
+  // ⭐ تحميل الصور المتعددة في الـ gallery
+  loadProductImages(p);
   document.getElementById("pm_available").value   = String(p?.available ?? true);
   document.getElementById("pm_videoUrl").value    = p?.videoUrl || "";
   document.getElementById("pm_videoCaption").value = p?.videoCaption || "";
@@ -3265,33 +3275,111 @@ function readStockValue() {
 }
 
 // ─── Image upload helpers ────────────────────────────────────────────────────
-let pendingProductImage = null;
+let pendingProductImage = null;   // legacy للـ single image (deprecated)
 let pendingLogoImage    = null;
 
+// ⭐ Multi-image state للمنتج
+let productImagesState = []; // array من {url?, base64?, ext?}
+
+function renderImagesGallery() {
+  const gallery = document.getElementById("pm_imagesGallery");
+  const counter = document.getElementById("pm_imgCounter");
+  const addBtn  = document.getElementById("pm_addImageBtn");
+  if (!gallery) return;
+
+  gallery.innerHTML = "";
+  productImagesState.forEach((img, idx) => {
+    const src = img.url || img.base64;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:relative;inline-size:96px;block-size:96px;border-radius:12px;overflow:hidden;border:2px solid " + (idx === 0 ? "#16a34a" : "#e5e7eb") + ";background:#fff;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.08)";
+    wrap.draggable = true;
+    wrap.dataset.idx = idx;
+    wrap.innerHTML = `
+      <img src="${src}" style="inline-size:100%;block-size:100%;object-fit:cover">
+      ${idx === 0 ? '<div style="position:absolute;inset-block-start:4px;inset-inline-start:4px;background:#16a34a;color:#fff;font-size:9.5px;font-weight:800;padding:2px 6px;border-radius:8px">رئيسية</div>' : ''}
+      <button type="button" onclick="removeProductImage(${idx})" style="position:absolute;inset-block-start:4px;inset-inline-end:4px;background:rgba(220,38,38,0.95);color:#fff;border:0;inline-size:22px;block-size:22px;border-radius:50%;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1">×</button>
+      <div style="position:absolute;inset-block-end:0;inset-inline:0;background:linear-gradient(transparent,rgba(0,0,0,.5));color:#fff;font-size:10px;font-weight:700;text-align:center;padding:6px 4px 4px">${idx + 1}</div>
+    `;
+
+    // Drag & drop reordering
+    wrap.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", String(idx)); wrap.style.opacity = "0.4"; });
+    wrap.addEventListener("dragend", () => { wrap.style.opacity = "1"; });
+    wrap.addEventListener("dragover", (e) => { e.preventDefault(); wrap.style.outline = "2px dashed #16a34a"; });
+    wrap.addEventListener("dragleave", () => { wrap.style.outline = "none"; });
+    wrap.addEventListener("drop", (e) => {
+      e.preventDefault();
+      wrap.style.outline = "none";
+      const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+      const toIdx = parseInt(wrap.dataset.idx);
+      if (fromIdx !== toIdx) {
+        const [moved] = productImagesState.splice(fromIdx, 1);
+        productImagesState.splice(toIdx, 0, moved);
+        renderImagesGallery();
+      }
+    });
+
+    gallery.appendChild(wrap);
+  });
+
+  // Counter
+  if (counter) counter.textContent = productImagesState.length > 0 ? `${productImagesState.length}/10 صور` : "حتى 10 صور";
+
+  // Hide add button لو وصلنا للحد الأقصى
+  if (addBtn) addBtn.style.display = productImagesState.length >= 10 ? "none" : "block";
+}
+
+function handleProductImages(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  const remaining = 10 - productImagesState.length;
+  if (remaining <= 0) {
+    if (window.TwaniUX) TwaniUX.toast("الحد الأقصى 10 صور", "warn");
+    return;
+  }
+  const toProcess = files.slice(0, remaining);
+
+  toProcess.forEach(file => {
+    if (file.size > 3 * 1024 * 1024) {
+      if (window.TwaniUX) TwaniUX.toast(`${file.name}: أكبر من 3MB`, "error");
+      return;
+    }
+    const ext = file.name.split(".").pop().toLowerCase();
+    const reader = new FileReader();
+    reader.onload = e => {
+      productImagesState.push({ base64: e.target.result, ext });
+      renderImagesGallery();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  input.value = ""; // reset
+}
+
+function removeProductImage(idx) {
+  if (window.TwaniMobile?.haptic?.tap) TwaniMobile.haptic.tap();
+  productImagesState.splice(idx, 1);
+  renderImagesGallery();
+}
+
+function loadProductImages(product) {
+  productImagesState = [];
+  if (Array.isArray(product?.images) && product.images.length) {
+    productImagesState = product.images.map(url => ({ url }));
+  } else if (product?.imageUrl) {
+    productImagesState = [{ url: product.imageUrl }];
+  }
+  renderImagesGallery();
+}
+
+// Legacy API — keep for compat
 function handleProductImage(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { showToast("الصورة أكبر من 3MB", "error"); return; }
-  const ext = file.name.split(".").pop().toLowerCase();
-  const reader = new FileReader();
-  reader.onload = e => {
-    pendingProductImage = { base64: e.target.result, ext };
-    const prev = document.getElementById("pm_imgPreview");
-    const ph   = document.getElementById("pm_imgPlaceholder");
-    prev.src = e.target.result; prev.style.display = "block";
-    ph.style.display = "none";
-  };
-  reader.readAsDataURL(file);
+  // redirect to new handler
+  handleProductImages(input);
 }
 
 function clearProductImage() {
-  pendingProductImage = null;
-  document.getElementById("pm_file").value = "";
-  document.getElementById("pm_curImageUrl").value = "";
-  const prev = document.getElementById("pm_imgPreview");
-  const ph   = document.getElementById("pm_imgPlaceholder");
-  prev.src = ""; prev.style.display = "none";
-  ph.style.display = "flex";
+  productImagesState = [];
+  renderImagesGallery();
 }
 
 function handleLogoImage(input) {
@@ -3366,14 +3454,27 @@ function collectAIExtraFields() {
 
 async function saveProduct() {
   const id = document.getElementById("pm_id").value;
-  let imageUrl = document.getElementById("pm_curImageUrl").value.trim() || null;
 
-  if (pendingProductImage) {
-    try {
-      const r = await api("POST", "/store/upload-image", pendingProductImage);
-      imageUrl = r.url;
-    } catch { showToast("فشل رفع الصورة، حاول مرة أخرى", "error"); return; }
+  // ⭐ ارفع كل الصور الجديدة (base64) وحوّلها لـ URLs
+  const finalImages = [];
+  for (let i = 0; i < productImagesState.length; i++) {
+    const img = productImagesState[i];
+    if (img.url) {
+      // صورة موجودة من قبل، تستخدم URL كما هي
+      finalImages.push(img.url);
+    } else if (img.base64) {
+      // صورة جديدة، ارفعها
+      try {
+        const r = await api("POST", "/store/upload-image", { base64: img.base64, ext: img.ext });
+        finalImages.push(r.url);
+      } catch (e) {
+        showToast(`فشل رفع الصورة ${i + 1}، حاول مرة أخرى`, "error");
+        return;
+      }
+    }
   }
+
+  const imageUrl = finalImages[0] || null; // backward compat
 
   const payload = {
     name:          document.getElementById("pm_name").value.trim(),
@@ -3382,6 +3483,7 @@ async function saveProduct() {
     category:      document.getElementById("pm_category").value,
     subCategoryId: document.getElementById("pm_subCategoryId").value.trim(),
     imageUrl,
+    images:        finalImages,
     videoUrl:      document.getElementById("pm_videoUrl").value.trim() || null,
     videoCaption:  document.getElementById("pm_videoCaption").value.trim() || "",
     available:     document.getElementById("pm_available").value === "true",

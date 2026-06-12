@@ -16,7 +16,7 @@ const couponsMod   = require("./coupons");
 const firestoreAuth = require("./firestore-auth");
 const waMgr        = require("./whatsapp-manager");
 const { audit }    = require("./audit-log");
-const bcrypt        = require("bcrypt");
+const bcrypt        = require("bcryptjs");
 
 const BCRYPT_RE = /^\$2[aby]?\$\d{2}\$/;
 const BCRYPT_ROUNDS = 12;
@@ -477,6 +477,17 @@ router.post("/store/products", auth, (req, res) => {
     cleanStock = Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
+  // معالجة الصور: ندعم images[] الجديد + imageUrl القديم (backward compat)
+  // النتيجة: images = array of URLs، imageUrl = الأولى (للتوافق مع الكود القديم)
+  const cleanImages = Array.isArray(req.body.images)
+    ? req.body.images
+        .map(img => typeof img === "string" ? img : (img?.url || ""))
+        .filter(u => u && u.length < 1000)
+        .slice(0, 10) // حد أقصى 10 صور لكل منتج
+    : req.body.imageUrl
+      ? [req.body.imageUrl]
+      : [];
+
   const product = {
     id:            "p_" + Date.now(),
     category:      req.body.category || "",
@@ -484,7 +495,8 @@ router.post("/store/products", auth, (req, res) => {
     name:          (req.body.name || "").trim(),
     description:   (req.body.description || "").trim(),
     price:         parseFloat(req.body.price) || 0,
-    imageUrl:      req.body.imageUrl || null,
+    images:        cleanImages,                          // ⭐ جديد: array
+    imageUrl:      cleanImages[0] || null,               // backward compat (الصورة الرئيسية)
     videoUrl:      sanitizeVideoUrl(req.body.videoUrl),
     videoCaption:  String(req.body.videoCaption || "").trim().slice(0, 200),
     available:     true,
@@ -529,6 +541,21 @@ router.put("/store/products/:id", auth, (req, res) => {
   }
   if (patch.videoUrl !== undefined)     patch.videoUrl = sanitizeVideoUrl(patch.videoUrl);
   if (patch.videoCaption !== undefined) patch.videoCaption = String(patch.videoCaption || "").trim().slice(0, 200);
+
+  // ⭐ معالجة الصور المتعددة عند التحديث
+  if (patch.images !== undefined) {
+    patch.images = Array.isArray(patch.images)
+      ? patch.images
+          .map(img => typeof img === "string" ? img : (img?.url || ""))
+          .filter(u => u && u.length < 1000)
+          .slice(0, 10)
+      : [];
+    // sync imageUrl للـ backward compat (الصورة الأولى = المعروضة في الكود القديم)
+    patch.imageUrl = patch.images[0] || null;
+  } else if (patch.imageUrl !== undefined && !Array.isArray(found.images)) {
+    // لو الكود القديم بعت imageUrl فقط، حافظ على images = [imageUrl]
+    patch.images = patch.imageUrl ? [patch.imageUrl] : [];
+  }
 
   const products = (store.products || []).map(p =>
     p.id === req.params.id ? { ...p, ...patch, id: p.id } : p
