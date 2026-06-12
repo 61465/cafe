@@ -243,8 +243,10 @@ function calculateMonthlyPnL(storeId, yearMonth, opts = {}) {
 
   for (const order of orders) {
     const status = order.status || "completed";
+    // ⚠️ يجب استبعاد المرفوضة + الملغية + قيد التأكيد من الـ revenue
+    if (["rejected", "cancelled", "pending_confirmation"].includes(status)) continue;
+    // الـ revenue (accrual): أي طلب confirmed أو متقدم → revenue معترف به
     const isCompleted = ["completed", "delivered", "done", "tasleem"].includes(status);
-    if (!isCompleted && !includePending) continue;
     if (isCompleted) completedCount++;
     ordersCount++;
 
