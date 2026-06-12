@@ -1011,6 +1011,14 @@ async function sendButtons(to, { body, buttons, footer }) {
   safe.forEach((b, i) => { btnMap[String(i + 1)] = b.id; });
   sessionManager.update(to, { _btnMap: btnMap });
 
+  // ⚡ default footer = "للاستفسار اكتب: مسؤول"
+  const HELP_HINT = "💬 للاستفسار اكتب: مسؤول";
+  if (!footer || footer.trim() === "") {
+    footer = HELP_HINT;
+  } else if (!footer.includes("مسؤول")) {
+    footer = footer + "\n" + HELP_HINT;
+  }
+
   const nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
 
   if (demo) {
@@ -1054,6 +1062,15 @@ async function sendList(to, { body, sections, footer, buttonText }) {
   const rowMap = {};
   rows.forEach((r, i) => { rowMap[String(i + 1)] = r.id; });
   sessionManager.update(to, { _btnMap: rowMap });
+
+  // ⚡ default footer = "للاستفسار اكتب: مسؤول" — يُضاف لو لم يحدد المستدعي footer مختلف
+  const HELP_HINT = "💬 للاستفسار اكتب: مسؤول";
+  if (!footer || footer.trim() === "") {
+    footer = HELP_HINT;
+  } else if (!footer.includes("مسؤول")) {
+    // لو الـ footer موجود لكن لا يذكر مسؤول، أضف الهينت كسطر إضافي
+    footer = footer + "\n" + HELP_HINT;
+  }
 
   const nums = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
   const opts = rows.map((r, i) => `${nums[i] || (i+1)+"."} ${r.title}`).join("\n");
@@ -2083,7 +2100,8 @@ async function sendNumericMenu(from) {
     `‎[2] ☕ طلب جديد مباشرة\n` +
     `‎[3] 📍 موقع الفرع وأوقات العمل\n` +
     `‎[4] 📞 شكوى أو اقتراح\n\n` +
-    `_اكتب 0 للعودة لاختيار طريقة الطلب_`
+    `_اكتب 0 للعودة لاختيار طريقة الطلب_\n` +
+    `💬 للاستفسار اكتب: *مسؤول*`
   );
 }
 
