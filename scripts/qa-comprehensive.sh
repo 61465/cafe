@@ -108,7 +108,21 @@ echo "$TFA" | grep -q enabled && pass "2FA endpoint responsive" || fail "2FA end
 LATEST_BAK=$(ls -t /opt/bothatim/backups/*.gpg 2>/dev/null | head -1)
 [ -n "$LATEST_BAK" ] && pass "latest backup: $(basename $LATEST_BAK)" || fail "no backups!"
 
-section "11) Boot health"
+section "11) CRITICAL: bot writes to PER-STORE file (the missed-bug check)"
+COUNT_BEFORE=$(wc -l < /opt/bothatim/data/orders_${SID}.jsonl 2>/dev/null || echo 0)
+GLOBAL_BEFORE=$(wc -l < /opt/bothatim/data/orders.jsonl 2>/dev/null || echo 0)
+node -e "
+const orders = require('/opt/bothatim/src/orders');
+orders.logOrder({ orderId: 'QA-FLOW-TEST', storeId: '${SID}', customerName: 'qa', customerPhone: '999999999', total: 1, status: 'pending_confirmation', items: [], currency: 'ر.س', date: new Date().toISOString().slice(0,10) });
+"
+COUNT_AFTER=$(wc -l < /opt/bothatim/data/orders_${SID}.jsonl 2>/dev/null || echo 0)
+GLOBAL_AFTER=$(wc -l < /opt/bothatim/data/orders.jsonl 2>/dev/null || echo 0)
+[ "$COUNT_AFTER" = "$((COUNT_BEFORE+1))" ] && pass "logOrder writes to PER-STORE file ($COUNT_BEFORE→$COUNT_AFTER)" || fail "PER-STORE not updated!"
+[ "$GLOBAL_AFTER" = "$GLOBAL_BEFORE" ] && pass "logOrder does NOT pollute global orders.jsonl" || fail "global polluted!"
+# cleanup the test entry
+sed -i '/QA-FLOW-TEST/d' /opt/bothatim/data/orders_${SID}.jsonl
+
+section "12) Boot health"
 ERRS=$(pm2 logs whatsapp-bot --lines 50 --nostream --err 2>&1 | grep -iE "FATAL|throw |SyntaxError|ReferenceError" | grep -v "geo\] reverse" | tail -3)
 if [ -z "$ERRS" ]; then pass "no fatal errors in boot logs"; else fail "errors: $ERRS"; fi
 
