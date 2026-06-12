@@ -1508,6 +1508,24 @@ async function handleMessage(from, incoming) {
     sessionManager.update(from, { _rateLimitWarned: 0 });
   }
 
+  // 🤐 Aggressive sender protection: 3 رسائل خلال 30 ثانية = mute فوري
+  // يحمي من الـ spam حتى لو دون الـ 30/min cap
+  const burstWindow = 30_000;
+  const recentMsgs = (_customerRateLimit.get(from) || []).filter(t => Date.now() - t < burstWindow);
+  if (recentMsgs.length >= 8) {
+    // 8 رسائل في 30 ثانية → mute 3 دقائق
+    if (!session.mutedUntil || Date.now() > session.mutedUntil) {
+      sessionManager.update(from, { mutedUntil: Date.now() + 3 * 60_000 });
+      console.log(`[burst-mute] [${storeId}] ${from} muted for 3min (8+ msgs/30s)`);
+      return sendText(from,
+        `🤖 *البوت في وضع الانتظار*\n\n` +
+        `لاحظنا رسائل كثيرة — سيعود الرد خلال *3 دقائق*.\n\n` +
+        `للاستعجال: اكتب *مسؤول* للتواصل المباشر`
+      );
+    }
+    return;
+  }
+
   // 🔁 Quick reorder — "كرر" أو "أعد آخر طلب" تستعيد آخر طلب
   if (/^(كرر|كرّر|اعد|أعد|reorder|repeat|نفس الطلب|اطلب مثل)/i.test(String(incoming).trim())) {
     if (session.lastOrderItems && Array.isArray(session.lastOrderItems)) {
@@ -2393,28 +2411,44 @@ async function handleCategorySelection(from, msg, session) {
     return triggerMuteOnInvalidMenuChoice(from, session);
   }
   if (msg === "BACK_MAIN") return sendCategoryMenu(from);
+  // اختيار صحيح → reset counter
+  sessionManager.update(from, { invalidCount: 0, invalidMenuWarnedAt: 0 });
   return showProductsPage(from, msg.replace("CAT_", ""), 0);
 }
 
-// ⏸ Helper: عند رسالة لا تختار من القائمة
-// مرة أولى → تنبيه. مرة ثانية → mute 5 دقائق
+// ⏸ Helper: عند رسالة لا تطابق الـ flow الحالي
+// counter يتراكم — يصل 2 = تنبيه، 3 = mute 5 دقائق، 5 = mute 15 دقيقة
 async function triggerMuteOnInvalidMenuChoice(from, session) {
   const now = Date.now();
-  const lastWarn = session.invalidMenuWarnedAt || 0;
-  // لو الـ warning تم قبل أقل من دقيقة → فعّل mute
-  if (lastWarn && (now - lastWarn) < 60_000) {
-    sessionManager.update(from, { mutedUntil: now + MUTE_DURATION_MS, invalidMenuWarnedAt: 0 });
+  const count = (session.invalidCount || 0) + 1;
+
+  // counter يُعاد تصفيره لو مضى دقيقتان من آخر invalid msg
+  const lastInvalid = session.lastInvalidAt || 0;
+  const effectiveCount = (now - lastInvalid > 2 * 60_000) ? 1 : count;
+
+  sessionManager.update(from, { invalidCount: effectiveCount, lastInvalidAt: now });
+
+  // 3 محاولات خاطئة → mute 5 دقائق
+  if (effectiveCount >= 3) {
+    sessionManager.update(from, {
+      mutedUntil: now + MUTE_DURATION_MS,
+      invalidCount: 0,
+      invalidMenuWarnedAt: 0,
+    });
     return sendText(from,
-      `🤖 _البوت في وضع الانتظار_\n\n` +
-      `سيعود للرد خلال *5 دقائق*.\n` +
-      `للاستعجال: اكتب *"ابدأ"* أو *"مسؤول"* للتواصل المباشر.`
+      `🤖 *البوت في وضع الانتظار*\n\n` +
+      `لاحظنا أن خياراتك لا تطابق القائمة.\n` +
+      `سيعود للرد خلال *5 دقائق*.\n\n` +
+      `للاستعجال:\n` +
+      `• اكتب *ابدأ* للبدء من جديد\n` +
+      `• اكتب *مسؤول* للتواصل المباشر`
     );
   }
-  // تنبيه واحد فقط
-  sessionManager.update(from, { invalidMenuWarnedAt: now });
+
+  // محاولة أولى أو ثانية → تنبيه
   return sendText(from,
     `📋 *اختر من القائمة أعلاه* — اضغط على أحد الخيارات\n\n` +
-    `_(لو أردت البدء من جديد: اكتب "ابدأ")_`
+    `_(محاولة ${effectiveCount}/3 — لو أردت البدء من جديد اكتب: ابدأ)_`
   );
 }
 
@@ -2488,15 +2522,19 @@ async function handleProductSelection(from, msg, session) {
   if (msg === "PAGE_NEXT") {
     return showProductsPage(from, session.currentCategory, (session.currentPage || 0) + 1);
   }
-  if (!msg.startsWith("PROD_")) return sendCategoryMenu(from);
+  if (!msg.startsWith("PROD_")) {
+    // ⏸ رسالة لا تطابق منتج → counter + mute
+    return triggerMuteOnInvalidMenuChoice(from, session);
+  }
 
   const { store } = storeCtx.getStore() || {};
   const currency  = store?.currency || CURRENCY;
   const productId = msg.replace("PROD_", "");
   const product   = (store?.products || []).find(p => String(p.id) === String(productId) && isProductInStock(p));
-  if (!product) return sendCategoryMenu(from);
+  if (!product) return triggerMuteOnInvalidMenuChoice(from, session);
 
-  sessionManager.update(from, { step: "QUANTITY", pendingProduct: product });
+  // اختيار صحيح → reset counter
+  sessionManager.update(from, { step: "QUANTITY", pendingProduct: product, invalidCount: 0 });
 
   // ⭐ Send product images — يدعم الصور المتعددة
   // الصورة الأولى تحوي تفاصيل المنتج، الباقي بـ caption صغير
@@ -2544,11 +2582,14 @@ async function handleQuantity(from, msg, session) {
   else if (msg === "QTY_2") qty = 2;
   else if (msg === "QTY_3") qty = 3;
   else if (msg === "QTY_5") qty = 5;
+  else if (msg === "BACK_CAT") return sendCategoryMenu(from);
   else {
     const parsed = parseInt(msg);
     if (!isNaN(parsed) && parsed > 0 && parsed <= 99) qty = parsed;
-    else return sendText(from, "❌ الكمية غير صحيحة. أرسل رقماً بين 1 و 99.");
+    else return triggerMuteOnInvalidMenuChoice(from, session);
   }
+  // اختيار كمية صحيحة → reset counter
+  sessionManager.update(from, { invalidCount: 0 });
   return addToCart(from, session, qty);
 }
 
