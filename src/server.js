@@ -1235,6 +1235,7 @@ async function handleOwnerCommand(from, text, store, storeId) {
   if (/^(مساعدة|أوامر|اوامر|help|commands)$/i.test(text)) {
     await sendText(from,
       `🎛️ *أوامر إدارة الطلبات من واتساب*\n\n` +
+      `📦 *إدارة الطلبات:*\n` +
       `*قبول* — يؤكد آخر طلب pending\n` +
       `*قبول ORD-1234567* — طلب محدد\n` +
       `*رفض ORD-1234567 السبب*\n` +
@@ -1242,11 +1243,83 @@ async function handleOwnerCommand(from, text, store, storeId) {
       `*جاهز ORD-1234567* — جاهز للاستلام\n` +
       `*خرج ORD-1234567* — المندوب في الطريق\n` +
       `*تم ORD-1234567* — تم التسليم\n` +
-      `*إلغاء ORD-1234567 السبب*\n\n` +
+      `*إلغاء ORD-1234567 السبب*\n` +
       `*طلبات* — قائمة آخر 5 طلبات pending\n\n` +
+      `🆘 *إدارة وضع المسؤول:*\n` +
+      `*منتظرين* — قائمة العملاء بانتظار مسؤول\n` +
+      `*استئناف 9665XXXXXXX* — أعد البوت لعميل محدد\n` +
+      `*استئناف الكل* — أعد البوت لكل العملاء\n\n` +
       `💡 يمكنك حذف "ORD-" والاكتفاء برقم الطلب`
     );
     return true;
+  }
+
+  // ── 🆘 إدارة handoffs من واتساب ────────────────────────────
+  // قائمة العملاء المنتظرين
+  if (/^(منتظرين|handoffs|قائمة\s*المسؤول)$/i.test(text)) {
+    try {
+      const handoffFile = path.join(__dirname, "..", "data", "handoffs.json");
+      const handoffs = fs.existsSync(handoffFile) ? JSON.parse(fs.readFileSync(handoffFile, "utf8")) : {};
+      const mine = Object.entries(handoffs).filter(([_, h]) => h.storeId === storeId);
+      if (!mine.length) { await sendText(from, "✅ لا يوجد عملاء بانتظار مسؤول حالياً"); return true; }
+      const list = mine.map(([phone, h], i) => {
+        const cleanPh = String(phone).replace("@s.whatsapp.net", "").replace(/\D/g, "");
+        const mins = Math.floor((Date.now() - new Date(h.startedAt || h.at || 0).getTime()) / 60000);
+        return `${i+1}. +${cleanPh}\n   منذ ${mins} د — "${(h.lastMsg||"").slice(0,40)}"`;
+      }).join("\n\n");
+      await sendText(from,
+        `🆘 *${mine.length} عميل بانتظار مسؤول:*\n\n${list}\n\n` +
+        `للاستئناف: *استئناف 9665XXXXXXX*\n` +
+        `للجميع: *استئناف الكل*`
+      );
+      return true;
+    } catch (e) { console.warn("[owner-cmd] منتظرين failed:", e.message); return false; }
+  }
+
+  // استئناف البوت لعميل واحد أو الكل
+  const resumeMatch = text.match(/^(استئناف|استانف|اعد\s*البوت|resume)\s+(.+)$/i);
+  if (resumeMatch) {
+    try {
+      const target = resumeMatch[2].trim();
+      const handoffFile = path.join(__dirname, "..", "data", "handoffs.json");
+      const handoffs = fs.existsSync(handoffFile) ? JSON.parse(fs.readFileSync(handoffFile, "utf8")) : {};
+      let removed = 0, notified = [];
+      if (/^(الكل|all|الجميع)$/i.test(target)) {
+        for (const [phone, h] of Object.entries(handoffs)) {
+          if (h.storeId === storeId) {
+            delete handoffs[phone];
+            removed++;
+            notified.push(phone);
+          }
+        }
+      } else {
+        // رقم محدد
+        const cleanTarget = target.replace(/\D/g, "");
+        for (const [phone, h] of Object.entries(handoffs)) {
+          const cleanPh = String(phone).replace(/\D/g, "");
+          if (h.storeId === storeId && (cleanPh === cleanTarget || cleanPh.endsWith(cleanTarget))) {
+            delete handoffs[phone];
+            removed++;
+            notified.push(phone);
+          }
+        }
+      }
+      if (!removed) { await sendText(from, "❌ لم أجد عميلاً مطابقاً في وضع المسؤول"); return true; }
+      require("./atomic-fs").writeJsonSync(handoffFile, handoffs);
+      // أبلغ كل عميل أن البوت عاد
+      for (const ph of notified) {
+        try {
+          await waMgr.sendMessage(storeId, ph,
+            `🤖 *البوت يعمل من جديد*\n\nيمكنك الآن متابعة طلبك معنا. اكتب أي شيء للبدء 🌸`);
+        } catch (e) { console.warn(`[resume] notify ${ph} failed:`, e.message); }
+      }
+      await sendText(from, `✅ تم استئناف البوت لـ *${removed}* عميل\nوأُرسلت لهم رسالة إعلام.`);
+      return true;
+    } catch (e) {
+      console.warn("[owner-cmd] استئناف failed:", e.message);
+      await sendText(from, "⚠️ فشل: " + e.message);
+      return true;
+    }
   }
 
   // قائمة طلبات pending
@@ -2003,7 +2076,33 @@ function _buildWelcomeSections(store, orderLink, custom = {}) {
 }
 
 async function sendWelcome(from) {
-  sessionManager.set(from, { step: "PATH_SELECT", cart: [], path: null });
+  // 🛡️ Welcome rate-limit: لا ترسل ترحيب أكثر من 1 كل 5 دقائق لنفس العميل
+  // (يحمي من spam الطفل/الأخطاء/الـ loops)
+  const session = sessionManager.get(from);
+  const lastWelcome = session._lastWelcomeAt || 0;
+  const now = Date.now();
+  const WELCOME_COOLDOWN = 5 * 60_000; // 5 دقائق
+  if (lastWelcome && now - lastWelcome < WELCOME_COOLDOWN) {
+    const counter = (session._welcomeBlockCount || 0) + 1;
+    sessionManager.update(from, { _welcomeBlockCount: counter });
+    console.log(`[welcome-throttle] ${from} — blocked (${counter}x) — last welcome ${Math.round((now-lastWelcome)/1000)}s ago`);
+    // عند 5 محاولات في < 5د → mute 10 دقائق (حماية spam)
+    if (counter >= 5) {
+      sessionManager.update(from, {
+        mutedUntil: now + 10 * 60_000,
+        _welcomeBlockCount: 0,
+      });
+      return sendText(from,
+        `🤖 *البوت في وضع الانتظار*\n\n` +
+        `لاحظنا رسائل متكررة — سيعود الرد خلال *10 دقائق*.\n\n` +
+        `للاستعجال اكتب: *مسؤول* 💬`
+      );
+    }
+    // وإلا تجاهل (لا ترسل ترحيب جديد)
+    return;
+  }
+  sessionManager.update(from, { _lastWelcomeAt: now, _welcomeBlockCount: 0 });
+  sessionManager.set(from, { step: "PATH_SELECT", cart: [], path: null, _lastWelcomeAt: now });
   const { store, storeId } = storeCtx.getStore() || {};
   const name = store?.storeName || STORE_NAME;
 
