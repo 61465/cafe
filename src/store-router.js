@@ -456,6 +456,169 @@ router.get("/store/archive/daily", auth, (req, res) => {
   });
 });
 
+// ═════════ 🤖 Bot Questions — الأسئلة الديناميكية لكل بيزنس ═════════════
+const DEFAULT_QUESTIONS_BY_TYPE = {
+  delivery: [
+    { id: "location", label: "العنوان", prompt: "📍 *أرسل موقعك من واتساب أو اكتب الحي/العنوان*", type: "location", required: true },
+    { id: "schedule", label: "وقت الاستلام", prompt: "🕐 *متى تريد التوصيل؟*\nاكتب: *الان* أو الوقت المرغوب", type: "schedule", required: true },
+  ],
+  cafe: [
+    { id: "location", label: "العنوان", prompt: "📍 *أرسل موقعك للتوصيل*", type: "location", required: true },
+    { id: "schedule", label: "وقت التوصيل", prompt: "🕐 *متى تريد التوصيل؟*", type: "schedule", required: true },
+    { id: "notes", label: "ملاحظات", prompt: "📝 *أي ملاحظات؟* (سكر/حليب/...)\nاكتب *تخطي* لو لا يوجد", type: "text", required: false },
+  ],
+  pickup: [
+    { id: "schedule", label: "وقت الاستلام", prompt: "🕐 *متى ستمر لاستلام طلبك؟*\nاكتب: *الان* أو الوقت", type: "schedule", required: true },
+  ],
+  homeService: [
+    { id: "location", label: "موقع الخدمة", prompt: "📍 *أرسل موقع المنزل/المكان*", type: "location", required: true },
+    { id: "schedule", label: "موعد الخدمة", prompt: "📅 *متى تريد الخدمة؟*", type: "schedule", required: true },
+    { id: "phone_extra", label: "رقم احتياطي", prompt: "📞 *رقم احتياطي للتواصل* (اختياري — اكتب تخطي)", type: "phone", required: false },
+  ],
+  walkin: [
+    { id: "schedule", label: "موعد الزيارة", prompt: "📅 *متى تريد الحجز؟*\nمثلاً: غداً 5 مساءً", type: "schedule", required: true },
+    { id: "notes", label: "ملاحظات", prompt: "📝 *أي تفضيلات؟* (اختياري — اكتب تخطي)", type: "text", required: false },
+  ],
+  software: [
+    { id: "project_desc", label: "وصف المشروع", prompt: "💼 *اشرح مشروعك باختصار*\nماذا تحتاج؟ ما الهدف؟", type: "text", required: true },
+    { id: "github_link", label: "رابط/ملف", prompt: "🔗 *لو يوجد رابط GitHub أو ملفات شاركها* (اختياري — اكتب تخطي)", type: "text", required: false },
+    { id: "budget", label: "الميزانية", prompt: "💰 *ميزانيتك التقريبية؟* (بالأرقام أو 'نناقش')", type: "text", required: false },
+    { id: "deadline", label: "الموعد النهائي", prompt: "📅 *موعد التسليم المطلوب؟*", type: "text", required: false },
+  ],
+  consultation: [
+    { id: "topic", label: "موضوع الاستشارة", prompt: "🧠 *ما موضوع استشارتك؟*", type: "text", required: true },
+    { id: "schedule", label: "وقت الاتصال", prompt: "📅 *متى تريد الاتصال؟*", type: "schedule", required: true },
+    { id: "phone_extra", label: "رقم التواصل", prompt: "📞 *أفضل رقم للتواصل*", type: "phone", required: false },
+  ],
+  salon: [
+    { id: "service_type", label: "نوع الخدمة", prompt: "💅 *ما الخدمة المطلوبة؟*\n(مثلاً: قص، صبغة، باديكير...)", type: "text", required: true },
+    { id: "schedule", label: "موعد الحجز", prompt: "📅 *متى تريد الموعد؟*", type: "schedule", required: true },
+  ],
+};
+
+function _getStoreQuestions(store, btype) {
+  if (store?.botQuestions?.fields && Array.isArray(store.botQuestions.fields) && store.botQuestions.fields.length) {
+    return store.botQuestions.fields;
+  }
+  // fallback: default templates حسب نوع البيزنس
+  return DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery;
+}
+
+// GET /store/bot-questions — يقرأ الأسئلة الحالية (أو default إن لم تُحفظ)
+router.get("/store/bot-questions", auth, (req, res) => {
+  const store = getStore(req.storeId);
+  const btype = store?.businessType || "delivery";
+  const fields = _getStoreQuestions(store, btype);
+  res.json({
+    fields,
+    businessType: btype,
+    source: store?.botQuestions?.fields ? "custom" : "default",
+  });
+});
+
+// PUT /store/bot-questions — حفظ الأسئلة المعدّلة
+router.put("/store/bot-questions", auth, (req, res) => {
+  const { fields } = req.body || {};
+  if (!Array.isArray(fields)) return res.status(400).json({ error: "fields يجب أن يكون مصفوفة" });
+  const ALLOWED_TYPES = ["location", "schedule", "text", "number", "choice", "phone", "date"];
+  const clean = [];
+  for (const f of fields.slice(0, 12)) {
+    if (!f || typeof f !== "object") continue;
+    const id = String(f.id || "").trim().slice(0, 50).replace(/[^a-zA-Z0-9_]/g, "_");
+    if (!id) continue;
+    const label = String(f.label || "").trim().slice(0, 80);
+    const prompt = String(f.prompt || "").trim().slice(0, 500);
+    const type = ALLOWED_TYPES.includes(f.type) ? f.type : "text";
+    if (!label || !prompt) continue;
+    const item = {
+      id, label, prompt, type,
+      required: !!f.required,
+    };
+    if (type === "choice" && Array.isArray(f.options)) {
+      item.options = f.options.slice(0, 10).map(o => String(o).slice(0, 80));
+    }
+    clean.push(item);
+  }
+  const data = readStores();
+  const idx = data.stores.findIndex(s => s.id === req.storeId);
+  if (idx < 0) return res.status(404).json({ error: "المتجر غير موجود" });
+  data.stores[idx].botQuestions = { fields: clean, updatedAt: new Date().toISOString() };
+  writeStores(data);
+  audit({
+    actor: req.impersonatedBy ? { type: "master", id: "master" } : { type: "store", id: req.storeId },
+    action: "bot-questions.update",
+    target: { type: "store", id: req.storeId },
+    meta: { count: clean.length },
+  }, req);
+  res.json({ ok: true, fields: clean });
+});
+
+// POST /store/bot-questions/generate — يُولّد أسئلة بالـ AI حسب نوع البيزنس
+router.post("/store/bot-questions/generate", auth, async (req, res) => {
+  const store = getStore(req.storeId);
+  const btype = store?.businessType || "delivery";
+  const storeName = store?.storeName || "المتجر";
+  const businessDesc = req.body?.description || `${storeName} (${btype})`;
+
+  try {
+    const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
+    if (!GROQ_API_KEY) {
+      // لا AI → ارجع defaults حسب النوع
+      return res.json({ fields: DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery, source: "default" });
+    }
+    const prompt = `أنت خبير في تصميم بوتات WhatsApp تجارية. للنشاط:
+"${businessDesc}"
+نوع: ${btype}
+
+اقترح 3-6 أسئلة يسألها البوت للعميل بعد اختياره من المنيو لإكمال الطلب.
+أعد JSON صرف:
+{
+  "fields": [
+    {"id":"slug_eng","label":"عنوان السؤال بالعربي","prompt":"النص الكامل الذي يُرسله البوت (مع emoji)","type":"location|schedule|text|number|choice|phone|date","required":true|false,"options":["خيار1","خيار2"]}
+  ]
+}
+
+قواعد:
+- لا تطلب العنوان لنشاطات لا تحتاج (مثل برمجة، استشارات هاتفية)
+- اطلب التفاصيل التي يحتاجها المتجر فعلاً
+- prompt يكون عربي طبيعي مع emoji واحد
+- options فقط لو type="choice"
+- id لاتيني snake_case
+- 3-6 أسئلة كحد أقصى`;
+
+    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 800,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) {
+      console.warn(`[bot-questions/generate] AI HTTP ${r.status}`);
+      return res.json({ fields: DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery, source: "default_fallback" });
+    }
+    const data = await r.json();
+    const content = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed.fields)) throw new Error("invalid fields");
+    res.json({ fields: parsed.fields.slice(0, 12), source: "ai" });
+  } catch (e) {
+    console.warn(`[bot-questions/generate] failed: ${e.message}`);
+    res.json({
+      fields: DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery,
+      source: "default_fallback",
+      error: e.message,
+    });
+  }
+});
+
+module.exports._getStoreQuestions = _getStoreQuestions; // للاستخدام لاحقاً في server.js
+
 // POST /store/archive/force — اختبار يدوي (يأرشف أمس فوراً)
 router.post("/store/archive/force-yesterday", auth, (req, res) => {
   const dailyArchive = require("./daily-archive");

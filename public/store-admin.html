@@ -747,6 +747,7 @@ tr:hover td{background:#fafcfa}
     <button class="tab"        id="tabMenu"     onclick="showTab('menu')"><span data-biz="catalog">📋 القائمة</span></button>
     <button class="tab"        id="tabOrders"   onclick="showTab('orders')"><span data-biz="orderInbox">📦 الطلبات</span></button>
     <button class="tab"        id="tabSupport"  onclick="showTab('support')">🆘 الدعم <span id="supportBadge" style="display:none;background:#dc2626;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:900;margin-right:5px">0</span></button>
+    <button class="tab"        id="tabBotQ"     onclick="showTab('botq')">🤖 أسئلة البوت</button>
     <button class="tab"        id="tabSettings"  onclick="showTab('settings')">⚙️ إعدادات المتجر</button>
     <button class="tab"        id="tabCustomers" onclick="showTab('customers')">👥 العملاء</button>
     <button class="tab"        id="tabBroadcast" onclick="showTab('broadcast')">📢 بث رسالة</button>
@@ -1341,6 +1342,91 @@ tr:hover td{background:#fafcfa}
         <div style="text-align:center;padding:40px;color:#9ca3af">⏳ جاري التحميل...</div>
       </div>
     </section>
+
+    <!-- ── 🤖 Bot Questions ── -->
+    <section id="botqSection" style="display:none">
+      <div style="background:linear-gradient(135deg,#eff6ff 0%,#fff 100%);border:1px solid #bfdbfe;border-radius:14px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#1e3a8a">🤖 أسئلة البوت للعميل</h2>
+          <p style="color:#3730a3;font-size:13px;margin:6px 0 0;line-height:1.7">
+            هذه الأسئلة يطرحها البوت على العميل بعد اختياره من المنيو.<br>
+            <b>كل نوع بيزنس يحتاج أسئلة مختلفة</b> — مثلاً برمجة لا تحتاج عنوان، صالون يحتاج موعد، توصيل يحتاج عنوان+وقت.
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="botqAIGenerate()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px;box-shadow:0 3px 10px rgba(124,58,237,0.3)">🪡 توليد بالـ AI</button>
+          <button onclick="botqResetDefault()" style="background:#fff;border:1px solid #d1d5db;color:#374151;padding:10px 16px;border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">↺ القيم الافتراضية</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 الأسئلة الحالية <span id="botqSource" style="font-size:11px;font-weight:500;color:#6b7280;margin-right:6px"></span></div>
+          <button onclick="botqAddField()" style="background:#1b5e20;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">+ إضافة سؤال</button>
+        </div>
+        <div id="botqList" style="padding:8px 14px 14px">
+          <div style="text-align:center;padding:30px;color:#9ca3af">⏳ جاري التحميل...</div>
+        </div>
+        <div style="padding:12px 14px 16px;border-top:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <div style="font-size:12px;color:#6b7280">💡 اسحب السؤال لإعادة ترتيبه. الأسئلة الإلزامية تظهر بـ ⚠️</div>
+          <button onclick="botqSave()" style="background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border:none;padding:11px 24px;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:14px;box-shadow:0 3px 10px rgba(27,94,32,0.3)">💾 حفظ الأسئلة</button>
+        </div>
+      </div>
+
+      <!-- معاينة كيف ستظهر للعميل -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-header"><div class="card-title">👁️ معاينة (كما يراها العميل)</div></div>
+        <div id="botqPreview" style="padding:14px;background:#f0f9ff;border-radius:8px;margin:8px 14px 16px;font-family:'Segoe UI';font-size:14px;color:#0c4a6e;line-height:1.9;white-space:pre-wrap"></div>
+      </div>
+    </section>
+
+    <!-- Modal لتعديل سؤال -->
+    <div id="botqModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:20px">
+      <div style="background:#fff;border-radius:14px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+        <h3 style="margin:0 0 18px;color:#111827" id="botqModalTitle">تعديل سؤال</h3>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">معرّف فريد (إنجليزي بدون فراغات)</label>
+            <input id="bq_id" type="text" placeholder="مثلاً: github_link" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">اسم السؤال (للأدمن)</label>
+            <input id="bq_label" type="text" placeholder="مثلاً: رابط المشروع" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">النص الذي يُرسله البوت للعميل</label>
+            <textarea id="bq_prompt" rows="3" placeholder="🔗 أرسل رابط GitHub أو وصف..." style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1">
+              <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">النوع</label>
+              <select id="bq_type" onchange="botqToggleOptions()" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit">
+                <option value="text">📝 نص حر</option>
+                <option value="location">📍 موقع/عنوان</option>
+                <option value="schedule">🕐 وقت/موعد</option>
+                <option value="phone">📞 رقم هاتف</option>
+                <option value="number">🔢 رقم</option>
+                <option value="date">📅 تاريخ</option>
+                <option value="choice">☑️ خيارات</option>
+              </select>
+            </div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:9px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px">
+                <input id="bq_required" type="checkbox"> إلزامي
+              </label>
+            </div>
+          </div>
+          <div id="bq_optionsRow" style="display:none">
+            <label style="font-size:12px;font-weight:700;color:#374151;display:block;margin-bottom:4px">الخيارات (واحد في كل سطر)</label>
+            <textarea id="bq_options" rows="3" placeholder="خيار 1&#10;خيار 2&#10;خيار 3" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+            <button onclick="botqModalClose()" style="background:#fff;border:1px solid #d1d5db;color:#374151;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
+            <button onclick="botqModalSave()" style="background:#1b5e20;color:#fff;border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-weight:800;font-family:inherit">حفظ</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Customers ── -->
     <section id="customersSection" style="display:none">
@@ -2160,7 +2246,7 @@ function toggleDeliveryFeeS() {
 }
 
 function showTab(tab) {
-  ["dash","menu","orders","support","settings","customers","broadcast","loyalty","whatsapp","archive","accounting","rejections","inventory","ratings"].forEach(t => {
+  ["dash","menu","orders","support","botq","settings","customers","broadcast","loyalty","whatsapp","archive","accounting","rejections","inventory","ratings"].forEach(t => {
     const sec = document.getElementById(t + "Section");
     const btn = document.getElementById("tab" + t.charAt(0).toUpperCase() + t.slice(1));
     if (sec) sec.style.display = t === tab ? "" : "none";
@@ -2169,6 +2255,7 @@ function showTab(tab) {
   if (tab === "menu")      loadProducts();
   if (tab === "orders")    loadOrders();
   if (tab === "support")   supportLoad();
+  if (tab === "botq")      botqLoad();
   if (tab === "settings")  loadSettings();
   if (tab === "customers") {
     const locked = !PLAN_FEATURES.customerRegistry;
@@ -3896,6 +3983,177 @@ function _supportRenderList(list) {
         </div>
       </div>`;
   }).join("");
+}
+
+// ═════════════ 🤖 Bot Questions ═════════════
+let _botqFields = []; // محلي قبل الحفظ
+let _botqEditIdx = -1;
+
+const TYPE_BADGES = {
+  text:     { emoji: "📝", label: "نص حر",     color: "#6b7280" },
+  location: { emoji: "📍", label: "موقع",      color: "#2563eb" },
+  schedule: { emoji: "🕐", label: "وقت",       color: "#7c3aed" },
+  phone:    { emoji: "📞", label: "هاتف",      color: "#dc2626" },
+  number:   { emoji: "🔢", label: "رقم",       color: "#f59e0b" },
+  date:     { emoji: "📅", label: "تاريخ",     color: "#10b981" },
+  choice:   { emoji: "☑️", label: "خيارات",    color: "#ec4899" },
+};
+
+async function botqLoad() {
+  const box = document.getElementById("botqList");
+  if (!box) return;
+  box.innerHTML = `<div style="text-align:center;padding:30px;color:#9ca3af">⏳ جاري التحميل...</div>`;
+  try {
+    const r = await api("GET", "/store/bot-questions");
+    _botqFields = Array.isArray(r.fields) ? r.fields : [];
+    document.getElementById("botqSource").textContent =
+      r.source === "custom" ? "(مخصصة)" : "(افتراضية — لم تُحفظ بعد)";
+    _botqRender();
+  } catch (e) {
+    box.innerHTML = `<div style="text-align:center;padding:30px;color:#dc2626">⚠️ فشل: ${esc(e.message||"")}</div>`;
+  }
+}
+
+function _botqRender() {
+  const box = document.getElementById("botqList");
+  const preview = document.getElementById("botqPreview");
+  if (!_botqFields.length) {
+    box.innerHTML = `<div style="text-align:center;padding:40px;background:#f9fafb;border-radius:10px;color:#6b7280">لا توجد أسئلة — اضغط "🪡 توليد بالـ AI" أو "+ إضافة سؤال"</div>`;
+    preview.textContent = "(لا توجد أسئلة)";
+    return;
+  }
+  box.innerHTML = _botqFields.map((f, i) => {
+    const b = TYPE_BADGES[f.type] || TYPE_BADGES.text;
+    return `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:move" draggable="true" ondragstart="botqDragStart(${i})" ondragover="event.preventDefault()" ondrop="botqDrop(${i})">
+      <span style="color:#9ca3af;font-size:16px;cursor:grab">⋮⋮</span>
+      <span style="background:${b.color}1a;color:${b.color};padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap">${b.emoji} ${b.label}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;color:#111827;font-size:14px;display:flex;align-items:center;gap:6px">
+          ${esc(f.label)}
+          ${f.required ? `<span style="color:#dc2626;font-size:11px">⚠️ إلزامي</span>` : `<span style="color:#9ca3af;font-size:11px">اختياري</span>`}
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.prompt)}</div>
+      </div>
+      <button onclick="botqEdit(${i})" title="تعديل" style="background:#f3f4f6;border:none;width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:14px">✏️</button>
+      <button onclick="botqDelete(${i})" title="حذف" style="background:#fef2f2;border:none;width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:14px;color:#dc2626">🗑️</button>
+    </div>`;
+  }).join("");
+  // معاينة
+  preview.textContent = _botqFields.map((f, i) =>
+    `سؤال ${i+1}${f.required ? " (إلزامي)" : ""}:\n${f.prompt}\n`
+  ).join("\n");
+}
+
+let _botqDragFrom = -1;
+function botqDragStart(i) { _botqDragFrom = i; }
+function botqDrop(i) {
+  if (_botqDragFrom < 0 || _botqDragFrom === i) return;
+  const item = _botqFields[_botqDragFrom];
+  _botqFields.splice(_botqDragFrom, 1);
+  _botqFields.splice(i, 0, item);
+  _botqDragFrom = -1;
+  _botqRender();
+}
+
+function botqAddField() {
+  _botqEditIdx = -1;
+  document.getElementById("botqModalTitle").textContent = "➕ سؤال جديد";
+  document.getElementById("bq_id").value = "";
+  document.getElementById("bq_label").value = "";
+  document.getElementById("bq_prompt").value = "";
+  document.getElementById("bq_type").value = "text";
+  document.getElementById("bq_required").checked = false;
+  document.getElementById("bq_options").value = "";
+  botqToggleOptions();
+  document.getElementById("botqModal").style.display = "flex";
+}
+
+function botqEdit(i) {
+  const f = _botqFields[i];
+  if (!f) return;
+  _botqEditIdx = i;
+  document.getElementById("botqModalTitle").textContent = `✏️ تعديل: ${f.label}`;
+  document.getElementById("bq_id").value = f.id || "";
+  document.getElementById("bq_label").value = f.label || "";
+  document.getElementById("bq_prompt").value = f.prompt || "";
+  document.getElementById("bq_type").value = f.type || "text";
+  document.getElementById("bq_required").checked = !!f.required;
+  document.getElementById("bq_options").value = (f.options || []).join("\n");
+  botqToggleOptions();
+  document.getElementById("botqModal").style.display = "flex";
+}
+
+function botqDelete(i) {
+  if (!confirm(`حذف السؤال "${_botqFields[i].label}"؟`)) return;
+  _botqFields.splice(i, 1);
+  _botqRender();
+}
+
+function botqModalClose() { document.getElementById("botqModal").style.display = "none"; }
+function botqToggleOptions() {
+  const isChoice = document.getElementById("bq_type").value === "choice";
+  document.getElementById("bq_optionsRow").style.display = isChoice ? "" : "none";
+}
+
+function botqModalSave() {
+  const id = document.getElementById("bq_id").value.trim().replace(/[^a-zA-Z0-9_]/g, "_");
+  const label = document.getElementById("bq_label").value.trim();
+  const prompt = document.getElementById("bq_prompt").value.trim();
+  const type = document.getElementById("bq_type").value;
+  const required = document.getElementById("bq_required").checked;
+  if (!id || !label || !prompt) {
+    showToast("املأ المعرّف + الاسم + النص", "error");
+    return;
+  }
+  const field = { id, label, prompt, type, required };
+  if (type === "choice") {
+    field.options = document.getElementById("bq_options").value.split("\n").map(s => s.trim()).filter(Boolean);
+  }
+  if (_botqEditIdx >= 0) _botqFields[_botqEditIdx] = field;
+  else _botqFields.push(field);
+  _botqRender();
+  botqModalClose();
+}
+
+async function botqSave() {
+  try {
+    await api("PUT", "/store/bot-questions", { fields: _botqFields });
+    showToast("✅ تم حفظ الأسئلة. ستبدأ بالعمل فوراً للعملاء.", "success");
+    document.getElementById("botqSource").textContent = "(مخصصة)";
+  } catch (e) {
+    showToast("فشل: " + (e.message || ""), "error");
+  }
+}
+
+async function botqAIGenerate() {
+  const desc = prompt("اشرح نشاطك في جملة (لو أردت تخصيص أدق). اتركه فارغاً لاستخدام نوع البيزنس فقط:") || "";
+  showToast("🪡 AI يحلل نشاطك ويُولّد الأسئلة...", "info");
+  try {
+    const r = await api("POST", "/store/bot-questions/generate", { description: desc });
+    if (Array.isArray(r.fields)) {
+      _botqFields = r.fields;
+      _botqRender();
+      const src = r.source === "ai" ? "✨ توليد AI" : r.source === "default_fallback" ? "⚠️ AI غير متاح — استخدمت قيم افتراضية" : "افتراضي";
+      showToast(`${src} (${r.fields.length} أسئلة)`, "success");
+    }
+  } catch (e) {
+    showToast("فشل التوليد: " + (e.message || ""), "error");
+  }
+}
+
+async function botqResetDefault() {
+  if (!confirm("استبدال الأسئلة الحالية بالقيم الافتراضية لنوع بيزنسك؟")) return;
+  try {
+    const r = await api("GET", "/store/bot-questions");
+    // لو في custom محفوظة، نأخذ defaults عبر force
+    const r2 = await api("POST", "/store/bot-questions/generate", { description: "" });
+    if (Array.isArray(r2.fields)) {
+      _botqFields = r2.fields;
+      _botqRender();
+      showToast("✅ تم استعادة القيم الافتراضية", "success");
+    }
+  } catch (e) { showToast("فشل: " + (e.message || ""), "error"); }
 }
 
 async function supportResume(phoneRaw) {
