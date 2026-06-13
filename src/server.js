@@ -6169,29 +6169,46 @@ app.post(["/api/order/:token", "/api/o/:token"], async (req, res) => {
 
   if (!cartItems.length) return res.status(400).json({ ok: false, error: "invalid items" });
 
-  // ❌ خطوة الاسم محذوفة — انتقل مباشرة لطلب الموقع/الجدولة حسب نوع البيزنس
+  // ❌ خطوة الاسم محذوفة — استخدم botQuestions الديناميكية إن وجدت
   const storeData = getStoreById(storeId);
-  const btype  = getBusinessType(storeData);
-  const labels = businessLabels(btype);
-  const nextStep = labels.needsLocation ? "COLLECT_LOCATION" : "SCHEDULE_ORDER";
+  const allFields = (storeData?.botQuestions?.fields || []).filter(f => f.enabled !== false);
+  let nextStep, firstPrompt;
+  if (allFields.length) {
+    // ⭐ المتجر حفظ أسئلة مخصصة → استخدمها
+    nextStep = "DYNAMIC_Q";
+    const f0 = allFields[0];
+    let extra = "";
+    if (f0.type === "location") extra = "\n🗺️ _أرسل موقعك من واتساب: 📎 ← الموقع_";
+    else if (f0.type === "schedule") extra = "\n_اكتب: *الان* أو الوقت المطلوب_";
+    else if (f0.type === "choice" && Array.isArray(f0.options)) extra = "\n" + f0.options.map((o,i)=>`${i+1}️⃣ ${o}`).join("\n");
+    const optional = !f0.required ? `\n_(اكتب *تخطي* للتجاوز)_` : "";
+    firstPrompt = `${f0.prompt}${extra}${optional}\n_(سؤال 1 من ${allFields.length})_`;
+  } else {
+    // legacy
+    const btype  = getBusinessType(storeData);
+    const labels = businessLabels(btype);
+    nextStep = labels.needsLocation ? "COLLECT_LOCATION" : "SCHEDULE_ORDER";
+    firstPrompt = labels.needsLocation
+      ? `\n\n📍 *${labels.locationPrompt}*\nأرسل موقعك من واتساب 📎 ← الموقع، أو اكتبه نصاً 👇`
+      : `\n\n📅 *حدد وقت الطلب*\nاكتب: *الآن* أو الوقت المرغوب`;
+  }
   sessionManager.set(from, {
     step: nextStep,
     cart: cartItems,
     path: "webview",
     orderNotes: cleanNotes,
     customerName: "عميل",
+    customAnswers: {},
+    questionIdx: allFields.length ? 0 : undefined,
   });
 
-  console.log(`[web-order] sending reply → storeId=${storeId} from=${from} notes=${cleanNotes.length} nextStep=${nextStep}`);
+  console.log(`[web-order] sending reply → storeId=${storeId} from=${from} notes=${cleanNotes.length} nextStep=${nextStep} customQ=${allFields.length}`);
   try {
-    const tail = labels.needsLocation
-      ? `\n\n📍 *${labels.locationPrompt}*\nأرسل موقعك من واتساب 📎 ← الموقع، أو اكتبه نصاً 👇`
-      : `\n\n📅 *حدد وقت الطلب*\nاكتب: *الآن* أو الوقت المرغوب (مثلاً: 8 مساءً)`;
     await waMgr.sendMessage(storeId, from,
       `✅ *تم استلام طلبك!*\n\n` +
       cartItems.map(i => `• ${i.name} × ${i.qty}`).join("\n") +
       (cleanNotes ? `\n\n📝 *ملاحظات:* ${cleanNotes}` : "") +
-      tail
+      `\n\n${firstPrompt}`
     );
     console.log(`[web-order] ✅ reply sent → ${from}`);
   } catch (e) {
