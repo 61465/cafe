@@ -1764,7 +1764,7 @@ async function handleMessage(from, incoming) {
 
   // Block outside working hours (except mid-flow)
   if (!isStoreOpen(store)) {
-    const midFlow = ["COLLECT_NAME","COLLECT_LOCATION","CONFIRM_ORDER","QUANTITY","CART_ACTION","POST_ORDER","COUPON","RATING","ORDER_BROWSE"]
+    const midFlow = ["COLLECT_NAME","COLLECT_LOCATION","DYNAMIC_Q","CONFIRM_ORDER","QUANTITY","CART_ACTION","POST_ORDER","COUPON","RATING","ORDER_BROWSE"]
       .includes(session.step);
     if (!midFlow) {
       sessionManager.reset(from);
@@ -1865,6 +1865,7 @@ async function handleMessage(from, incoming) {
       if (msg === "ORDER_CONFIRM") return handleOrderBrowse(from, "تأكيد", session);
       if (msg === "ORDER_MENU")    return sendTextOrderMenu(from);
       return handleOrderBrowse(from, msg, session);
+    case "DYNAMIC_Q":        return handleDynamicQuestion(from, msg, session);
     case "COLLECT_NAME":     return handleCollectName(from, msg, session);
     case "COLLECT_LOCATION": return handleCollectLocation(from, msg, session);
     case "SCHEDULE_ORDER":   return handleScheduleOrder(from, msg, session);
@@ -2955,10 +2956,19 @@ async function handleCouponStep(from, msg, session) {
   }
 
   // ⚡ Helper: ينقل لمرحلة الموقع/الجدولة مباشرة (تخطي طلب الاسم)
+  // يستخدم botQuestions.fields[] المخصصة إن وُجدت، وإلا الـ flow القديم.
   function _moveToNextAfterCart() {
+    sessionManager.update(from, { customerName: "عميل", customerLocation: null, customAnswers: {} });
+    const fields = (store?.botQuestions?.fields && store.botQuestions.fields.length)
+      ? store.botQuestions.fields
+      : null;
+    if (fields) {
+      sessionManager.update(from, { step: "DYNAMIC_Q", questionIdx: 0 });
+      return _askDynamicQuestion(from, fields, 0);
+    }
+    // Legacy fallback (لو لم يحفظ المتجر أسئلة مخصصة بعد)
     const btype  = getBusinessType(store);
     const labels = businessLabels(btype);
-    sessionManager.update(from, { customerName: "عميل", customerLocation: null });
     if (!labels.needsLocation) {
       sessionManager.update(from, { step: "SCHEDULE_ORDER" });
       return sendScheduleAsk(from, "");
@@ -3028,6 +3038,107 @@ async function handleCouponStep(from, msg, session) {
   // Fallback — ننتقل مباشرة للمرحلة التالية (بدون طلب الاسم)
   sessionManager.update(from, { couponWaiting: false });
   return _moveToNextAfterCart();
+}
+
+// ═════════ 🤖 Dynamic Bot Questions Flow ═════════════════════════════
+// يستخدم botQuestions.fields[] المعرّفة في إعدادات المتجر، يطرح كل سؤال بدوره
+// ويحفظ الإجابات في session.customAnswers[fieldId]
+
+async function _askDynamicQuestion(from, fields, idx) {
+  const f = fields[idx];
+  if (!f) return _finishDynamicQuestions(from);
+  let extra = "";
+  if (f.type === "location") {
+    extra = `\n\n🗺️ _أرسل موقعك من واتساب: 📎 ← الموقع ← موقعي الحالي_`;
+  } else if (f.type === "schedule") {
+    extra = `\n\n_اكتب: *الان* أو الوقت المطلوب_`;
+  } else if (f.type === "choice" && Array.isArray(f.options)) {
+    extra = "\n\n" + f.options.map((o, i) => `${i + 1}️⃣ ${o}`).join("\n");
+  }
+  const optional = !f.required ? `\n\n_اكتب *تخطي* للتجاوز_` : "";
+  return sendText(from, `${f.prompt}${extra}${optional}\n\n_(سؤال ${idx + 1} من ${fields.length})_`);
+}
+
+async function handleDynamicQuestion(from, msg, session) {
+  const { store } = storeCtx.getStore() || {};
+  const fields = store?.botQuestions?.fields || [];
+  const idx = Number(session.questionIdx || 0);
+  const f = fields[idx];
+  if (!f) return _finishDynamicQuestions(from);
+
+  const trimmed = String(msg || "").trim();
+  const normalized = aiParser.normalizeAr(trimmed);
+
+  // الرجوع للسلة في أي وقت
+  if (/^(تعديل|رجوع|السلة|سلتي|back)$/i.test(normalized)) {
+    return showCart(from, sessionManager.get(from));
+  }
+
+  // تخطي للأسئلة الاختيارية
+  if (!f.required && /^(تخطي|تخطى|skip|لا)$/i.test(normalized)) {
+    return _saveAnswerAndNext(from, fields, idx, "");
+  }
+
+  // validation حسب النوع
+  if (f.type === "location") {
+    if (!isValidLocation(trimmed) && !trimmed.startsWith("📍|")) {
+      return sendText(from, `❌ لم أفهم الموقع. أرسل موقعاً من واتساب أو اكتب اسم الحي/العنوان.\n\n${f.prompt}`);
+    }
+    // إذا كان رسالة موقع من واتساب، أعد توجيه لمعالجها (يستخرج الإحداثيات)
+    if (trimmed.startsWith("📍|")) {
+      sessionManager.update(from, { customerLocation: trimmed });
+    }
+  } else if (f.type === "schedule") {
+    let parsed = orderScheduler.parseArabicTime(trimmed);
+    if (!parsed) { try { parsed = await aiParser.aiParseTime(trimmed); } catch {} }
+    if (!parsed) {
+      return sendText(from, `❌ لم أفهم الوقت. مثال: *الان* أو "بعد ساعة" أو "8 مساءً"\n\n${f.prompt}`);
+    }
+    sessionManager.update(from, { scheduledTime: trimmed });
+  } else if (f.type === "phone") {
+    if (!/^[\d+\s\-()]{7,20}$/.test(trimmed)) {
+      return sendText(from, `❌ رقم غير صحيح. أرسل رقم هاتف صالح (7-20 رقم).\n\n${f.prompt}`);
+    }
+  } else if (f.type === "number") {
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+      return sendText(from, `❌ من فضلك أرسل رقماً فقط.\n\n${f.prompt}`);
+    }
+  } else if (f.type === "choice" && Array.isArray(f.options)) {
+    const n = parseInt(trimmed);
+    if (n >= 1 && n <= f.options.length) {
+      return _saveAnswerAndNext(from, fields, idx, f.options[n - 1]);
+    }
+    const matched = f.options.find(o => aiParser.normalizeAr(o) === normalized);
+    if (matched) return _saveAnswerAndNext(from, fields, idx, matched);
+    return sendText(from, `❌ اختر رقماً من 1 إلى ${f.options.length} أو اكتب أحد الخيارات.\n\n${f.prompt}\n\n${f.options.map((o, i) => `${i+1}. ${o}`).join("\n")}`);
+  } else if (f.type === "text") {
+    if (trimmed.length < 2) {
+      return sendText(from, `❌ من فضلك أرسل إجابة أطول.\n\n${f.prompt}`);
+    }
+  }
+
+  return _saveAnswerAndNext(from, fields, idx, trimmed);
+}
+
+function _saveAnswerAndNext(from, fields, idx, answer) {
+  const session = sessionManager.get(from);
+  const answers = { ...(session.customAnswers || {}) };
+  answers[fields[idx].id] = answer;
+  // sync للحقول الخاصة المعروفة في الـ summary القديم
+  if (fields[idx].type === "location" && answer) {
+    sessionManager.update(from, { customerLocation: answer });
+  }
+  sessionManager.update(from, {
+    customAnswers: answers,
+    questionIdx: idx + 1,
+  });
+  return _askDynamicQuestion(from, fields, idx + 1);
+}
+
+async function _finishDynamicQuestions(from) {
+  // كل الأسئلة تمت → اذهب لـ summary
+  sessionManager.update(from, { step: "CONFIRM_ORDER", questionIdx: undefined });
+  return showOrderSummary(from, sessionManager.get(from));
 }
 
 async function handleCollectName(from, msg, session) {
