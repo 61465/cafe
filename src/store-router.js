@@ -497,11 +497,19 @@ const DEFAULT_QUESTIONS_BY_TYPE = {
 };
 
 function _getStoreQuestions(store, btype) {
+  let fields;
   if (store?.botQuestions?.fields && Array.isArray(store.botQuestions.fields) && store.botQuestions.fields.length) {
-    return store.botQuestions.fields;
+    fields = store.botQuestions.fields;
+  } else {
+    fields = DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery;
   }
-  // fallback: default templates حسب نوع البيزنس
-  return DEFAULT_QUESTIONS_BY_TYPE[btype] || DEFAULT_QUESTIONS_BY_TYPE.delivery;
+  // اضمن enabled: true لكل سؤال لم يحدد قيمته (backward compat)
+  return fields.map(f => ({ enabled: true, ...f }));
+}
+
+// ⚡ للبوت: يرجع فقط الأسئلة المفعّلة (للـ flow الديناميكي)
+function _getActiveStoreQuestions(store, btype) {
+  return _getStoreQuestions(store, btype).filter(f => f.enabled !== false);
 }
 
 // GET /store/bot-questions — يقرأ الأسئلة الحالية (أو default إن لم تُحفظ)
@@ -533,6 +541,7 @@ router.put("/store/bot-questions", auth, (req, res) => {
     const item = {
       id, label, prompt, type,
       required: !!f.required,
+      enabled:  f.enabled !== false, // افتراضي مفعّل
     };
     if (type === "choice" && Array.isArray(f.options)) {
       item.options = f.options.slice(0, 10).map(o => String(o).slice(0, 80));
@@ -617,7 +626,8 @@ router.post("/store/bot-questions/generate", auth, async (req, res) => {
   }
 });
 
-module.exports._getStoreQuestions = _getStoreQuestions; // للاستخدام لاحقاً في server.js
+module.exports._getStoreQuestions = _getStoreQuestions;
+module.exports._getActiveStoreQuestions = _getActiveStoreQuestions;
 
 // POST /store/archive/force — اختبار يدوي (يأرشف أمس فوراً)
 router.post("/store/archive/force-yesterday", auth, (req, res) => {

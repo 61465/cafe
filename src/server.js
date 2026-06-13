@@ -2959,12 +2959,14 @@ async function handleCouponStep(from, msg, session) {
   // يستخدم botQuestions.fields[] المخصصة إن وُجدت، وإلا الـ flow القديم.
   function _moveToNextAfterCart() {
     sessionManager.update(from, { customerName: "عميل", customerLocation: null, customAnswers: {} });
-    const fields = (store?.botQuestions?.fields && store.botQuestions.fields.length)
-      ? store.botQuestions.fields
+    // فقط الأسئلة المفعّلة (enabled !== false)
+    const allFields = store?.botQuestions?.fields;
+    const activeFields = Array.isArray(allFields)
+      ? allFields.filter(f => f.enabled !== false)
       : null;
-    if (fields) {
+    if (activeFields && activeFields.length) {
       sessionManager.update(from, { step: "DYNAMIC_Q", questionIdx: 0 });
-      return _askDynamicQuestion(from, fields, 0);
+      return _askDynamicQuestion(from, activeFields, 0);
     }
     // Legacy fallback (لو لم يحفظ المتجر أسئلة مخصصة بعد)
     const btype  = getBusinessType(store);
@@ -3061,7 +3063,7 @@ async function _askDynamicQuestion(from, fields, idx) {
 
 async function handleDynamicQuestion(from, msg, session) {
   const { store } = storeCtx.getStore() || {};
-  const fields = store?.botQuestions?.fields || [];
+  const fields = (store?.botQuestions?.fields || []).filter(f => f.enabled !== false);
   const idx = Number(session.questionIdx || 0);
   const f = fields[idx];
   if (!f) return _finishDynamicQuestions(from);

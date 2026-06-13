@@ -1410,9 +1410,12 @@ tr:hover td{background:#fafcfa}
                 <option value="choice">☑️ خيارات</option>
               </select>
             </div>
-            <div style="display:flex;align-items:flex-end;padding-bottom:9px">
+            <div style="display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding-bottom:9px">
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px">
                 <input id="bq_required" type="checkbox"> إلزامي
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;font-size:13px;color:#16a34a">
+                <input id="bq_enabled" type="checkbox" checked> مفعّل
               </label>
             </div>
           </div>
@@ -4022,27 +4025,49 @@ function _botqRender() {
     preview.textContent = "(لا توجد أسئلة)";
     return;
   }
+  const activeCount = _botqFields.filter(f => f.enabled !== false).length;
   box.innerHTML = _botqFields.map((f, i) => {
     const b = TYPE_BADGES[f.type] || TYPE_BADGES.text;
+    const isOff = f.enabled === false;
+    const dimmed = isOff ? "opacity:0.5" : "";
+    const offBadge = isOff ? `<span style="background:#fef2f2;color:#991b1b;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700">⏸ معطّل</span>` : "";
     return `
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:move" draggable="true" ondragstart="botqDragStart(${i})" ondragover="event.preventDefault()" ondrop="botqDrop(${i})">
+    <div style="background:#fff;border:1px solid ${isOff ? "#fecaca" : "#e5e7eb"};border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:move;${dimmed}" draggable="true" ondragstart="botqDragStart(${i})" ondragover="event.preventDefault()" ondrop="botqDrop(${i})">
       <span style="color:#9ca3af;font-size:16px;cursor:grab">⋮⋮</span>
       <span style="background:${b.color}1a;color:${b.color};padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap">${b.emoji} ${b.label}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:800;color:#111827;font-size:14px;display:flex;align-items:center;gap:6px">
+        <div style="font-weight:800;color:#111827;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           ${esc(f.label)}
           ${f.required ? `<span style="color:#dc2626;font-size:11px">⚠️ إلزامي</span>` : `<span style="color:#9ca3af;font-size:11px">اختياري</span>`}
+          ${offBadge}
         </div>
         <div style="font-size:12px;color:#6b7280;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.prompt)}</div>
       </div>
+      <label title="${isOff ? "فعّل" : "عطّل"}" style="display:inline-flex;align-items:center;cursor:pointer;position:relative;width:44px;height:24px">
+        <input type="checkbox" ${isOff ? "" : "checked"} onchange="botqToggle(${i})" style="opacity:0;width:0;height:0">
+        <span style="position:absolute;inset:0;background:${isOff ? "#d1d5db" : "#16a34a"};border-radius:24px;transition:.2s;"></span>
+        <span style="position:absolute;top:2px;${isOff ? "left:2px" : "right:2px"};width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
+      </label>
       <button onclick="botqEdit(${i})" title="تعديل" style="background:#f3f4f6;border:none;width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:14px">✏️</button>
-      <button onclick="botqDelete(${i})" title="حذف" style="background:#fef2f2;border:none;width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:14px;color:#dc2626">🗑️</button>
+      <button onclick="botqDelete(${i})" title="حذف نهائي" style="background:#fef2f2;border:none;width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:14px;color:#dc2626">🗑️</button>
     </div>`;
   }).join("");
-  // معاينة
-  preview.textContent = _botqFields.map((f, i) =>
+  // ملخص العداد
+  const totalSpan = document.getElementById("botqSource");
+  if (totalSpan) {
+    const baseText = totalSpan.textContent.replace(/\s*·.*$/, "");
+    totalSpan.textContent = `${baseText} · ${activeCount} مفعّل من ${_botqFields.length}`;
+  }
+  // معاينة — فقط المفعّلة
+  preview.textContent = _botqFields.filter(f => f.enabled !== false).map((f, i) =>
     `سؤال ${i+1}${f.required ? " (إلزامي)" : ""}:\n${f.prompt}\n`
-  ).join("\n");
+  ).join("\n") || "(لا أسئلة مفعّلة — البوت لن يطرح أي سؤال على العميل)";
+}
+
+function botqToggle(i) {
+  if (!_botqFields[i]) return;
+  _botqFields[i].enabled = _botqFields[i].enabled === false; // toggle
+  _botqRender();
 }
 
 let _botqDragFrom = -1;
@@ -4064,6 +4089,7 @@ function botqAddField() {
   document.getElementById("bq_prompt").value = "";
   document.getElementById("bq_type").value = "text";
   document.getElementById("bq_required").checked = false;
+  document.getElementById("bq_enabled").checked = true;
   document.getElementById("bq_options").value = "";
   botqToggleOptions();
   document.getElementById("botqModal").style.display = "flex";
@@ -4079,6 +4105,7 @@ function botqEdit(i) {
   document.getElementById("bq_prompt").value = f.prompt || "";
   document.getElementById("bq_type").value = f.type || "text";
   document.getElementById("bq_required").checked = !!f.required;
+  document.getElementById("bq_enabled").checked = f.enabled !== false;
   document.getElementById("bq_options").value = (f.options || []).join("\n");
   botqToggleOptions();
   document.getElementById("botqModal").style.display = "flex";
@@ -4102,11 +4129,12 @@ function botqModalSave() {
   const prompt = document.getElementById("bq_prompt").value.trim();
   const type = document.getElementById("bq_type").value;
   const required = document.getElementById("bq_required").checked;
+  const enabled  = document.getElementById("bq_enabled").checked;
   if (!id || !label || !prompt) {
     showToast("املأ المعرّف + الاسم + النص", "error");
     return;
   }
-  const field = { id, label, prompt, type, required };
+  const field = { id, label, prompt, type, required, enabled };
   if (type === "choice") {
     field.options = document.getElementById("bq_options").value.split("\n").map(s => s.trim()).filter(Boolean);
   }
