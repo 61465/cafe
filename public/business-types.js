@@ -228,10 +228,26 @@ function renderDashboardCards(cards) {
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);border-right:4px solid ${c.color||"#d4af37"}">
       <div style="font-size:28px;line-height:1;margin-bottom:8px">${c.emoji||"📊"}</div>
       <div style="font-size:12px;color:#6b7280;font-weight:600">${c.title}</div>
-      <div style="font-size:22px;font-weight:900;color:${c.color||"#111827"};margin-top:4px" id="kpi_${c.key||c.metric}">—</div>
+      <div style="font-size:22px;font-weight:900;color:${c.color||"#111827"};margin-top:4px" id="kpi_${c.metric||c.key}" data-metric="${c.metric||c.key}">—</div>
     </div>
   `).join("");
+  // اجلب البيانات الحقيقية
+  hydrateDashboardKPIs();
 }
+
+async function hydrateDashboardKPIs() {
+  try {
+    const kpi = await api("GET", "/store/kpi");
+    document.querySelectorAll("[data-metric]").forEach(el => {
+      const m = el.getAttribute("data-metric");
+      let v = kpi[m];
+      if (v === undefined || v === null) v = 0;
+      if (typeof v === "number" && !Number.isInteger(v)) v = v.toFixed(1);
+      el.textContent = v;
+    });
+  } catch (e) { console.warn("[kpi] hydrate failed:", e.message); }
+}
+window.hydrateDashboardKPIs = hydrateDashboardKPIs;
 
 // ─── Quick actions (chip buttons) ──────────────────────────
 function renderQuickActions(actions) {

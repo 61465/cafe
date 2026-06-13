@@ -122,7 +122,16 @@ app.use("/try/",          webTokenLimiter);
 
 app.use(express.json({ limit: "60mb" })); // raised for video uploads (videos enforce 50MB inside endpoint)
 app.use(express.raw({ type: "video/*", limit: "60mb" }));
-app.use(express.static(path.join(__dirname, "..", "public")));
+app.use(express.static(path.join(__dirname, "..", "public"), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // HTML/JS/CSS: لا تكاش (يضمن وصول التحديثات فوراً للمتصفح)
+    if (/\.(html|js|css)$/i.test(filePath)) {
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    }
+  }
+}));
 app.use("/invoices",     express.static(path.join(__dirname, "..", "data", "invoices"),  { maxAge:"1d" }));
 app.use("/store-images", express.static(path.join(__dirname, "..", "data", "images")));
 app.use("/store-videos", express.static(path.join(__dirname, "..", "data", "videos"), {

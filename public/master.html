@@ -1012,6 +1012,18 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
 
       <div id="dashAlert" style="display:none"></div>
 
+      <!-- 💰 الوضع المالي لكل متجر -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">💰 الوضع المالي لكل متجر</div>
+          <button class="btn btn-outline btn-sm" onclick="loadFinancial()">🔄 تحديث</button>
+        </div>
+        <div id="financialSummary" style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 14px;font-size:13px"></div>
+        <div class="table-wrap" id="financialTable">
+          <div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-header">
           <div class="card-title">📋 المتاجر</div>
@@ -2008,7 +2020,7 @@ function showView(view) {
 
 // ─── Refresh All ───────────────────────────────────────────────────────────────
 async function refreshAll() {
-  await Promise.all([loadStats(), loadDashStores(), loadOwnerSettings()]);
+  await Promise.all([loadStats(), loadDashStores(), loadOwnerSettings(), loadFinancial()]);
   loadWaStatuses();
   pollPendingBadge();
 }
@@ -2069,6 +2081,77 @@ async function loadStats() {
     }
   } catch (e) {
     if (e.status === 401) { doLogout(); }
+  }
+}
+
+// ─── Financial breakdown per store ─────────────────────────────────────────────
+async function loadFinancial() {
+  const tbl = document.getElementById("financialTable");
+  const sum = document.getElementById("financialSummary");
+  if (!tbl) return;
+  try {
+    const r = await api("GET", "/master/financial").catch(() => ({ rows: [], totals: {} }));
+    const rows = Array.isArray(r.rows) ? r.rows : [];
+    const totals = r.totals || {};
+
+    sum.innerHTML = `
+      <span style="background:#dcfce7;color:#166534;padding:4px 10px;border-radius:999px;font-weight:700">💵 MRR: $${(totals.mrr||0).toFixed(0)}</span>
+      <span style="background:#dbeafe;color:#1e40af;padding:4px 10px;border-radius:999px;font-weight:700">📅 إيرادات الشهر: ${(totals.revenueMonth||0).toFixed(0)}</span>
+      <span style="background:#f3e8ff;color:#6b21a8;padding:4px 10px;border-radius:999px;font-weight:700">📦 طلبات الشهر: ${totals.ordersMonth||0}</span>
+      ${totals.expired > 0  ? `<span style="background:#fee2e2;color:#991b1b;padding:4px 10px;border-radius:999px;font-weight:700">⛔ منتهي: ${totals.expired}</span>` : ""}
+      ${totals.critical > 0 ? `<span style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:999px;font-weight:700">⚠️ حرج: ${totals.critical}</span>` : ""}
+    `;
+
+    if (!rows.length) {
+      tbl.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>لا توجد متاجر بعد</p></div>`;
+      return;
+    }
+
+    const healthBadge = (h) => ({
+      expired:  `<span style="background:#fee2e2;color:#991b1b;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">⛔ منتهي</span>`,
+      critical: `<span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">⚠️ حرج</span>`,
+      warning:  `<span style="background:#fef9c3;color:#854d0e;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">🟡 ينتهي قريباً</span>`,
+      healthy:  `<span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">✅ نشط</span>`,
+    }[h] || "");
+
+    const planEmoji = { basic: "🌱", pro: "⭐", advanced: "👑" };
+    const fmt = (n, c) => `${(Number(n)||0).toFixed(0)} ${c||""}`.trim();
+    const daysLabel = (d) => d == null ? "—" : (d < 0 ? `متأخر ${-d}ي` : `${d}ي`);
+
+    tbl.innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#f9fafb;text-align:right;font-size:12px;color:#6b7280">
+            <th style="padding:10px 8px">المتجر</th>
+            <th style="padding:10px 8px">الباقة</th>
+            <th style="padding:10px 8px">الحالة</th>
+            <th style="padding:10px 8px">الاشتراك/ش</th>
+            <th style="padding:10px 8px">الاستحقاق</th>
+            <th style="padding:10px 8px">إيرادات الشهر</th>
+            <th style="padding:10px 8px">طلبات الشهر</th>
+            <th style="padding:10px 8px">معلّق</th>
+            <th style="padding:10px 8px">متوسط الطلب</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(s => `
+            <tr style="border-top:1px solid #f3f4f6;cursor:pointer" onclick="showStoreOrders('${s.storeId}','${(s.storeName||'').replace(/'/g,'')}')">
+              <td style="padding:10px 8px;font-weight:700">${esc(s.storeName)}</td>
+              <td style="padding:10px 8px">${planEmoji[s.plan]||"📦"} ${esc(s.plan)}</td>
+              <td style="padding:10px 8px">${healthBadge(s.paymentHealth)}</td>
+              <td style="padding:10px 8px;font-weight:700">$${s.subscriptionFee.toFixed(0)}</td>
+              <td style="padding:10px 8px;font-size:12px;color:#6b7280">${daysLabel(s.daysLeft)}</td>
+              <td style="padding:10px 8px;font-weight:700;color:#059669">${fmt(s.revenueMonth, s.currency)}</td>
+              <td style="padding:10px 8px">${s.ordersMonth}</td>
+              <td style="padding:10px 8px">${s.pendingCount > 0 ? `<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-weight:700">${s.pendingCount}</span>` : "—"}</td>
+              <td style="padding:10px 8px;color:#6b7280">${fmt(s.avgOrder, s.currency)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    tbl.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>فشل تحميل الوضع المالي</p></div>`;
   }
 }
 

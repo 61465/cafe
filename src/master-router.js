@@ -7,7 +7,7 @@ const express       = require("express");
 const crypto        = require("crypto");
 const fs            = require("fs");
 const path          = require("path");
-const bcrypt        = require("bcrypt");
+const bcrypt        = require("bcryptjs");
 const rateLimit     = require("express-rate-limit");
 
 // regex: detect if a string is already a bcrypt hash
@@ -574,6 +574,92 @@ router.get("/master/stats", auth, (req, res) => {
   };
   _statsCache = { ts: Date.now(), data };
   res.json(data);
+});
+
+// ─── Per-store financial summary — وضع مالي لكل متجر ──────────────────────────
+router.get("/master/financial", auth, (_req, res) => {
+  const { stores } = readStores();
+  const today = new Date().toISOString().slice(0, 10);
+  const monthPrefix = today.slice(0, 7);
+  const earningStatuses = new Set(["confirmed", "completed", "delivered", "done"]);
+
+  const rows = stores.map(store => {
+    const file = store.id === "nakheel_001"
+      ? path.join(DATA_DIR, "orders.jsonl")
+      : path.join(DATA_DIR, `orders_${store.id}.jsonl`);
+
+    let ordersTotal = 0, ordersToday = 0, ordersMonth = 0;
+    let revenueTotal = 0, revenueToday = 0, revenueMonth = 0;
+    let lastOrderAt = null;
+    let pendingCount = 0;
+
+    if (fs.existsSync(file)) {
+      try {
+        const lines = fs.readFileSync(file, "utf8").split("\n");
+        for (const l of lines) {
+          if (!l) continue;
+          try {
+            const o = JSON.parse(l);
+            if (o._test) continue;
+            ordersTotal++;
+            const ts = (o.timestamp || "").slice(0, 10);
+            const isEarning = earningStatuses.has(o.status);
+            const total = Number(o.total || 0);
+            if (ts === today)            { ordersToday++; if (isEarning) revenueToday += total; }
+            if (ts.startsWith(monthPrefix)) { ordersMonth++; if (isEarning) revenueMonth += total; }
+            if (isEarning) revenueTotal += total;
+            if (o.status === "pending_confirmation") pendingCount++;
+            if (!lastOrderAt || (o.timestamp || "") > lastOrderAt) lastOrderAt = o.timestamp || lastOrderAt;
+          } catch {}
+        }
+      } catch {}
+    }
+
+    const subFee = parseFloat(store.subscriptionFee || 0) || 0;
+    const next = store.subscriptionNextPayment ? new Date(store.subscriptionNextPayment) : null;
+    const daysLeft = next ? Math.ceil((next - new Date()) / 86400000) : null;
+    const status = store.subscriptionStatus || "inactive";
+
+    return {
+      storeId:      store.id,
+      storeName:    store.storeName || store.id,
+      plan:         store.plan || "basic",
+      currency:     store.currency || "ر.س",
+      status,
+      subscriptionFee:  subFee,
+      nextPayment:      store.subscriptionNextPayment || null,
+      daysLeft,
+      paymentHealth:    status !== "active" ? "expired" :
+                        (daysLeft != null && daysLeft <= 3) ? "critical" :
+                        (daysLeft != null && daysLeft <= 7) ? "warning" : "healthy",
+      ordersTotal, ordersToday, ordersMonth,
+      revenueTotal: parseFloat(revenueTotal.toFixed(2)),
+      revenueToday: parseFloat(revenueToday.toFixed(2)),
+      revenueMonth: parseFloat(revenueMonth.toFixed(2)),
+      avgOrder:     ordersTotal ? parseFloat((revenueTotal / ordersTotal).toFixed(2)) : 0,
+      pendingCount,
+      lastOrderAt,
+    };
+  });
+
+  // ترتيب: المتأخرين/الحرجين أولاً ثم الأعلى إيراداً
+  rows.sort((a, b) => {
+    const order = { expired: 0, critical: 1, warning: 2, healthy: 3 };
+    const d = order[a.paymentHealth] - order[b.paymentHealth];
+    return d !== 0 ? d : (b.revenueMonth - a.revenueMonth);
+  });
+
+  res.json({
+    rows,
+    totals: {
+      stores:        rows.length,
+      mrr:           parseFloat(rows.filter(r => r.status === "active").reduce((s, r) => s + r.subscriptionFee, 0).toFixed(2)),
+      revenueMonth:  parseFloat(rows.reduce((s, r) => s + r.revenueMonth, 0).toFixed(2)),
+      ordersMonth:   rows.reduce((s, r) => s + r.ordersMonth, 0),
+      expired:       rows.filter(r => r.paymentHealth === "expired").length,
+      critical:      rows.filter(r => r.paymentHealth === "critical").length,
+    },
+  });
 });
 
 // ─── Plans list ───────────────────────────────────────────────────────────────

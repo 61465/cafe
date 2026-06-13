@@ -3844,8 +3844,24 @@ function renderOrdersTable() {
             <button onclick="updateStatus('${esc(o.orderId)}','in_progress')" style="background:#ec4899;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">💆 الجلسة بدأت</button>
             <button onclick="completeOrder('${esc(o.orderId)}')" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">${compEmoji} ${compLbl}</button>`;
         }
-      } else if (o.status === "preparing" || o.status === "out_for_delivery" || o.status === "in_progress" || o.status === "ready_pickup" || o.status === "awaiting_review") {
+      } else if (o.status === "preparing") {
+        // cart mode: يمكن الانتقال للمندوب في الطريق ثم الإنهاء
+        if (mode === "cart") {
+          workflowBtns = `
+            <button onclick="updateStatus('${esc(o.orderId)}','out_for_delivery')" style="background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">🚴 المندوب في الطريق</button>
+            <button onclick="updateStatus('${esc(o.orderId)}','ready_pickup')" style="background:#0ea5e9;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">📦 جاهز للاستلام</button>
+            <button onclick="completeOrder('${esc(o.orderId)}')" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">${compEmoji} ${compLbl}</button>`;
+        } else {
+          workflowBtns = `
+            <button onclick="completeOrder('${esc(o.orderId)}')" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">${compEmoji} ${compLbl}</button>`;
+        }
+      } else if (o.status === "out_for_delivery" || o.status === "ready_pickup") {
         workflowBtns = `
+          <button onclick="completeOrder('${esc(o.orderId)}')" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">${compEmoji} ${compLbl}</button>`;
+      } else if (o.status === "in_progress" || o.status === "awaiting_review") {
+        // single/booking mode
+        workflowBtns = `
+          ${o.status === "in_progress" && mode === "single" ? `<button onclick="updateStatus('${esc(o.orderId)}','awaiting_review')" style="background:#8b5cf6;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">📋 للمراجعة</button>` : ""}
           <button onclick="completeOrder('${esc(o.orderId)}')" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-weight:700;font-family:inherit">${compEmoji} ${compLbl}</button>`;
       }
       // زر "إلغاء" متاح طالما الطلب لم يُكتمل/يُرفض/يُلغَ بالفعل

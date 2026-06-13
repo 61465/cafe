@@ -407,6 +407,76 @@ router.get("/store/stats", auth, (req, res) => {
   });
 });
 
+// ─── KPI endpoint — يخدم كل أنواع البيزنس (services/projects/cafe/restaurant…)
+router.get("/store/kpi", auth, (req, res) => {
+  const allOrders = readOrders(req.storeId);
+  const orders = allOrders.filter(o => !o._test);
+  const today = new Date().toISOString().slice(0, 10);
+  const monthPrefix = today.slice(0, 7);
+
+  const earned = new Set(["confirmed", "completed", "delivered", "done"]);
+  const active = new Set(["pending_confirmation", "confirmed", "preparing", "out_for_delivery", "in_progress", "ready_pickup", "awaiting_review"]);
+  const completed = new Set(["completed", "delivered", "done", "tasleem"]);
+
+  let revenueTotal = 0, revenueMonth = 0;
+  let hoursTotal = 0;
+  let pendingInvoices = 0;
+  const customers = new Set();
+  let activeProjects = 0;
+  let completedCount = 0;
+
+  for (const o of orders) {
+    const ts = (o.timestamp || "").slice(0, 10);
+    const isEarn = earned.has(o.status);
+    const total = Number(o.total || 0);
+    if (isEarn) revenueTotal += total;
+    if (isEarn && ts.startsWith(monthPrefix)) revenueMonth += total;
+    if (active.has(o.status)) activeProjects++;
+    if (completed.has(o.status)) completedCount++;
+    if (o.status === "pending_confirmation") pendingInvoices++;
+    if (o.customerPhone) customers.add(String(o.customerPhone));
+    // hours من items meta لو موجودة (للخدمات الساعية)
+    for (const it of (o.items || [])) {
+      const h = Number(it.hours || it.duration || 0);
+      if (!isNaN(h) && h > 0) hoursTotal += h * (it.qty || 1);
+    }
+  }
+
+  // متوسط التقييم
+  let rating = 0, ratingsCount = 0;
+  try {
+    const { getStoreSummary } = require("./ratings");
+    const s = getStoreSummary(req.storeId);
+    rating = Number(s.average || 0);
+    ratingsCount = Number(s.count || 0);
+  } catch {}
+
+  const todayOr = orders.filter(o => (o.timestamp || "").slice(0, 10) === today);
+  const monthOr = orders.filter(o => (o.timestamp || "").slice(0, 10).startsWith(monthPrefix));
+
+  res.json({
+    // متاجر/مطاعم/كافيهات
+    orders:        orders.length,
+    ordersToday:   todayOr.length,
+    ordersMonth:   monthOr.length,
+    products:      0, // (يتم تعبئتها من tab المنتجات منفصلاً)
+    sales:         parseFloat(revenueTotal.toFixed(2)),
+    salesToday:    parseFloat(todayOr.filter(o => earned.has(o.status)).reduce((s, o) => s + Number(o.total || 0), 0).toFixed(2)),
+    salesMonth:    parseFloat(revenueMonth.toFixed(2)),
+    avgOrder:      orders.length ? parseFloat((revenueTotal / orders.length).toFixed(2)) : 0,
+    // خدمات/برمجة/استشارات
+    projects:      activeProjects,
+    completed:     completedCount,
+    hours:         parseFloat(hoursTotal.toFixed(1)),
+    invoices:      pendingInvoices,
+    // عام
+    customers:     customers.size,
+    rating:        rating ? rating.toFixed(1) : "0.0",
+    ratingsCount,
+    pending:       pendingInvoices,
+  });
+});
+
 // ─── Store Settings — مع validation للقيم ─────────────────────────────────────
 const SETTING_VALIDATORS = {
   storeName:          v => String(v || "").trim().slice(0, 100),
