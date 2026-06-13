@@ -422,8 +422,18 @@ const SETTING_VALIDATORS = {
   menuMode:           v => v === "dark" || v === "light" ? v : null,
   invoiceTemplate:    v => ["classic","minimal","bold","elegant"].includes(v) ? v : null,
   businessType:       v => String(v || "").trim().slice(0, 50),
-  invoiceLogoUrl:     v => { try { new URL(v); return String(v).slice(0, 500); } catch { return v === "" ? "" : null; } },
-  logoUrl:            v => { try { new URL(v); return String(v).slice(0, 500); } catch { return v === "" ? "" : null; } },
+  invoiceLogoUrl:     v => {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    if (s.startsWith("/store-images/") || s.startsWith("/uploads/")) return s.slice(0, 500);
+    try { new URL(s); return s.slice(0, 500); } catch { return null; }
+  },
+  logoUrl:            v => {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    if (s.startsWith("/store-images/") || s.startsWith("/uploads/")) return s.slice(0, 500);
+    try { new URL(s); return s.slice(0, 500); } catch { return null; }
+  },
   address:            v => String(v || "").trim().slice(0, 300),
   locationMapUrl:     v => { try { new URL(v); return String(v).slice(0, 500); } catch { return v === "" ? "" : null; } },
   requireConfirmation: v => v === true || v === "true" || v === 1,
@@ -1061,25 +1071,26 @@ function updateOrderStatus(storeId, orderId, status, extraMeta) {
   const file = storeId === "nakheel_001"
     ? path.join(DATA_DIR, "orders.jsonl")
     : path.join(DATA_DIR, `orders_${storeId}.jsonl`);
-  if (!fs.existsSync(file)) return false;
-  const lines = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean);
-  const stamp = new Date().toISOString();
-  const updated = lines.map(l => {
-    try {
-      const obj = JSON.parse(l);
-      if (obj.orderId === orderId) {
-        obj.status = status;
-        obj.statusUpdatedAt = stamp;
-        if (status === "completed" || status === "delivered" || status === "done") obj.deliveredAt = obj.deliveredAt || stamp;
-        if (status === "rejected")  obj.rejectedAt  = stamp;
-        if (status === "cancelled") obj.cancelledAt = stamp;
-        if (extraMeta && typeof extraMeta === "object") Object.assign(obj, extraMeta);
-      }
-      return JSON.stringify(obj);
-    } catch { return l; }
+  return atomicFs.updateJsonl(file, lines => {
+    const stamp = new Date().toISOString();
+    let found = false;
+    const updated = lines.map(l => {
+      try {
+        const obj = JSON.parse(l);
+        if (obj.orderId === orderId) {
+          found = true;
+          obj.status = status;
+          obj.statusUpdatedAt = stamp;
+          if (status === "completed" || status === "delivered" || status === "done") obj.deliveredAt = obj.deliveredAt || stamp;
+          if (status === "rejected")  obj.rejectedAt  = stamp;
+          if (status === "cancelled") obj.cancelledAt = stamp;
+          if (extraMeta && typeof extraMeta === "object") Object.assign(obj, extraMeta);
+        }
+        return JSON.stringify(obj);
+      } catch { return l; }
+    });
+    return { lines: updated, result: found };
   });
-  fs.writeFileSync(file, updated.join("\n") + "\n", "utf8");
-  return true;
 }
 
 // ─── Notifications polling — للستور (طلبات جديدة بعد timestamp معين) ─────────

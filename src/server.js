@@ -1674,7 +1674,7 @@ async function handleMessage(from, incoming) {
     }
   }
 
-  // إذا العميل في handoff state، البوت يسكت تماماً
+  // إذا العميل في handoff state، البوت يسكت تماماً (مع TTL تلقائي 24h)
   try {
     const fs = require("fs");
     const path = require("path");
@@ -1682,8 +1682,17 @@ async function handleMessage(from, incoming) {
     if (fs.existsSync(handoffFile)) {
       const handoffs = JSON.parse(fs.readFileSync(handoffFile, "utf8"));
       if (handoffs[from] && handoffs[from].storeId === storeId) {
-        console.log(`[handoff] silent for ${from} (paused for ${storeId})`);
-        return;
+        const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000; // 24 ساعة
+        const startedAt = new Date(handoffs[from].at || 0).getTime();
+        const expired = startedAt && (Date.now() - startedAt > HANDOFF_TTL_MS);
+        if (expired) {
+          delete handoffs[from];
+          try { require("./atomic-fs").writeJsonSync(handoffFile, handoffs); } catch {}
+          console.log(`[handoff] auto-resumed (TTL expired) for ${from} @ ${storeId}`);
+        } else {
+          console.log(`[handoff] silent for ${from} (paused for ${storeId})`);
+          return;
+        }
       }
     }
   } catch {}

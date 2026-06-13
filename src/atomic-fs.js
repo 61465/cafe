@@ -67,4 +67,20 @@ function appendJsonlSync(file, obj) {
   fs.appendFileSync(file, JSON.stringify(obj) + "\n", "utf8");
 }
 
-module.exports = { writeSync, writeJsonSync, readJsonSync, appendJsonlSync };
+/**
+ * read JSONL → apply mutator → write atomically.
+ * @param {string} file
+ * @param {(lines:string[]) => {lines:string[], result?:any}} mutator
+ * @returns {any} the .result from mutator (or false if file missing)
+ */
+function updateJsonl(file, mutator) {
+  if (!fs.existsSync(file)) return false;
+  const raw = fs.readFileSync(file, "utf8");
+  const lines = raw.trim().split("\n").filter(Boolean);
+  const out = mutator(lines) || { lines };
+  const newContent = out.lines.join("\n") + "\n";
+  writeSync(file, newContent, { encoding: "utf8" });
+  return out.result !== undefined ? out.result : true;
+}
+
+module.exports = { writeSync, writeJsonSync, readJsonSync, appendJsonlSync, updateJsonl };

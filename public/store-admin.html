@@ -2941,22 +2941,30 @@ async function applyStoreColor() {
 async function loadDashboard() {
   try {
     const [statsData, ordersData] = await Promise.all([
-      api("GET", "/store/stats"),
-      api("GET", "/store/orders?limit=5"),
+      api("GET", "/store/stats").catch(() => ({})),
+      api("GET", "/store/orders?limit=5").catch(() => ({ orders: [] })),
     ]);
+
+    const s = {
+      ordersTotal:  Number(statsData.ordersTotal)  || 0,
+      ordersToday:  Number(statsData.ordersToday)  || 0,
+      revenueTotal: Number(statsData.revenueTotal) || 0,
+      revenueToday: Number(statsData.revenueToday) || 0,
+      topProducts:  Array.isArray(statsData.topProducts) ? statsData.topProducts : [],
+    };
 
     const currency = localStorage.getItem("store_currency") || "ر.س";
     document.getElementById("statsGrid").innerHTML = `
-      <div class="stat-card"><div class="stat-label">📦 إجمالي الطلبات</div><div class="stat-value">${statsData.ordersTotal}</div><div class="stat-sub">منذ البداية</div></div>
-      <div class="stat-card green"><div class="stat-label">🕐 طلبات اليوم</div><div class="stat-value">${statsData.ordersToday}</div><div class="stat-sub">اليوم فقط</div></div>
-      <div class="stat-card"><div class="stat-label">💰 إجمالي الإيرادات</div><div class="stat-value">${statsData.revenueTotal.toFixed(0)}</div><div class="stat-sub">${currency}</div></div>
-      <div class="stat-card blue"><div class="stat-label">💵 إيرادات اليوم</div><div class="stat-value">${statsData.revenueToday.toFixed(0)}</div><div class="stat-sub">${currency} اليوم</div></div>
+      <div class="stat-card"><div class="stat-label">📦 إجمالي الطلبات</div><div class="stat-value">${s.ordersTotal}</div><div class="stat-sub">منذ البداية</div></div>
+      <div class="stat-card green"><div class="stat-label">🕐 طلبات اليوم</div><div class="stat-value">${s.ordersToday}</div><div class="stat-sub">اليوم فقط</div></div>
+      <div class="stat-card"><div class="stat-label">💰 إجمالي الإيرادات</div><div class="stat-value">${s.revenueTotal.toFixed(0)}</div><div class="stat-sub">${currency}</div></div>
+      <div class="stat-card blue"><div class="stat-label">💵 إيرادات اليوم</div><div class="stat-value">${s.revenueToday.toFixed(0)}</div><div class="stat-sub">${currency} اليوم</div></div>
     `;
 
     // Top products bar chart
-    const maxQty = Math.max(...statsData.topProducts.map(p => p.qty), 1);
-    document.getElementById("topList").innerHTML = statsData.topProducts.length
-      ? statsData.topProducts.map(p => `
+    const maxQty = Math.max(...s.topProducts.map(p => p.qty || 0), 1);
+    document.getElementById("topList").innerHTML = s.topProducts.length
+      ? s.topProducts.map(p => `
           <div class="top-item">
             <div class="top-name">${esc(p.name)}</div>
             <div class="top-bar-bg"><div class="top-bar-fill" style="width:${(p.qty/maxQty*100).toFixed(0)}%"></div></div>

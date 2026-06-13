@@ -2029,7 +2029,14 @@ async function pollPendingBadge() {
 // ─── Stats ─────────────────────────────────────────────────────────────────────
 async function loadStats() {
   try {
-    const d = await api("GET", "/master/stats");
+    const raw = await api("GET", "/master/stats").catch(() => ({}));
+    const d = {
+      totalStores:       Number(raw.totalStores)       || 0,
+      activeStores:      Number(raw.activeStores)      || 0,
+      totalOrdersToday:  Number(raw.totalOrdersToday)  || 0,
+      monthlyRevenue:    Number(raw.monthlyRevenue)    || 0,
+      expiringCount:     Number(raw.expiringCount)     || 0,
+    };
     document.getElementById("statsGrid").innerHTML = `
       <div class="stat-card">
         <div class="stat-label">🏪 إجمالي المتاجر</div>
