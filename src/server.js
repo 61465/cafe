@@ -1930,7 +1930,7 @@ async function handleMessage(from, incoming) {
   const midFlow     = ["PATH_SELECT","MAIN_MENU","CATEGORY","PRODUCT",
                        "COLLECT_NAME","COLLECT_LOCATION","SCHEDULE_ORDER","COLLECT_TIME",
                        "CONFIRM_ORDER","QUANTITY","CART_ACTION","CART_EDIT","POST_ORDER",
-                       "COUPON","ORDER_BROWSE","AI_BROWSE","NUMERIC_MENU","NUMERIC_FEEDBACK"]
+                       "COUPON","DYNAMIC_Q","RATING","ORDER_BROWSE","AI_BROWSE","NUMERIC_MENU","NUMERIC_FEEDBACK"]
     .includes(session.step);
 
   // 🚫 Anti-spam: لو العميل أرسل تحية قبل أقل من 30 ثانية، عاملها كـ invalid (counter)
