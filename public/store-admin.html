@@ -1388,6 +1388,31 @@ tr:hover td{background:#fafcfa}
       </div>
     </section>
 
+    <!-- 📦 Move Product to Category Modal -->
+    <div id="moveProductModal" onclick="if(event.target===this)closeMoveProduct()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:center;justify-content:center;padding:18px">
+      <div style="background:#fff;border-radius:16px;max-width:460px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:17px;font-weight:900">📦 نقل لقسم آخر</div>
+            <div id="movProdName" style="font-size:13px;opacity:.95;margin-top:3px"></div>
+          </div>
+          <button onclick="closeMoveProduct()" style="background:rgba(255,255,255,.2);border:none;color:#fff;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+        </div>
+        <div style="padding:20px 22px">
+          <div id="movFromTo" style="background:#f3f4f6;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px;color:#374151"></div>
+          <label style="display:block;font-size:13px;font-weight:700;color:#111827;margin-bottom:8px">القسم الجديد:</label>
+          <select id="movNewCat" style="width:100%;padding:11px 14px;border:1.5px solid #d1d5db;border-radius:9px;font-family:inherit;font-size:14px;font-weight:700;background:#fff"></select>
+          <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:9px 12px;margin-top:12px;font-size:11px;color:#78350f;line-height:1.6">
+            💡 سيظهر المنتج في القسم الجديد فوراً للعملاء في القائمة. لن تتأثر الطلبات السابقة.
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onclick="closeMoveProduct()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:11px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
+            <button onclick="confirmMoveProduct()" style="flex:2;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;padding:11px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit;box-shadow:0 3px 10px rgba(124,58,237,.3)">📦 نقل المنتج</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 🪡 AI Menu Import Modal -->
     <div id="aiImportModal" onclick="if(event.target===this)closeAiImport()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1300;align-items:flex-start;justify-content:center;padding:14px;overflow-y:auto">
       <div style="background:#fff;border-radius:16px;max-width:760px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.4);overflow:hidden;margin-top:20px">
@@ -3516,6 +3541,7 @@ function renderProducts() {
             <input type="checkbox" ${p.available?'checked':''} onchange="toggleAvail('${p.id}',this.checked)">
             <span class="toggle-slider"></span>
           </label>
+          <button class="btn-icon" onclick="openMoveProduct('${p.id}')" title="نقل لقسم آخر" style="color:#7c3aed">📦</button>
           <button class="btn-icon" onclick="openProductModal('${p.id}')" title="تعديل">✏️</button>
           <button class="btn-icon danger" onclick="deleteProduct('${p.id}')" title="حذف">🗑️</button>
         </div>
@@ -4198,6 +4224,42 @@ async function botqLoad() {
 
 let _botqWelcome = "";
 let _botqThankYou = "";
+
+// ═════════════ 📦 Move Product to Category ═════════════
+let _moveProductId = null;
+function openMoveProduct(productId) {
+  const p = (allProducts || []).find(x => x.id === productId);
+  if (!p) { showToast("منتج غير موجود", "error"); return; }
+  _moveProductId = productId;
+  const cats = allCategories || [];
+  const fromCat = cats.find(c => c.id === p.category);
+  document.getElementById("movProdName").textContent = p.name || "—";
+  document.getElementById("movFromTo").innerHTML = `
+    <div>📍 القسم الحالي: <b style="color:#374151">${fromCat ? `${fromCat.emoji||""} ${esc(fromCat.name)}` : '<span style="color:#dc2626">(بدون قسم)</span>'}</b></div>
+  `;
+  const sel = document.getElementById("movNewCat");
+  sel.innerHTML = cats.map(c => `<option value="${c.id}" ${c.id===p.category?'disabled':''}>${c.emoji||"📋"} ${esc(c.name)}${c.id===p.category?' (القسم الحالي)':''}</option>`).join("");
+  // اختر أول قسم ليس القسم الحالي
+  for (const opt of sel.options) { if (!opt.disabled) { sel.value = opt.value; break; } }
+  document.getElementById("moveProductModal").style.display = "flex";
+}
+function closeMoveProduct() {
+  document.getElementById("moveProductModal").style.display = "none";
+  _moveProductId = null;
+}
+async function confirmMoveProduct() {
+  if (!_moveProductId) return;
+  const newCat = document.getElementById("movNewCat").value;
+  if (!newCat) { showToast("اختر قسماً", "error"); return; }
+  try {
+    await api("PUT", `/store/products/${encodeURIComponent(_moveProductId)}`, { category: newCat });
+    showToast("✅ تم نقل المنتج", "success");
+    closeMoveProduct();
+    loadProducts();
+  } catch (e) {
+    showToast("فشل: " + (e.message || ""), "error");
+  }
+}
 
 // ═════════════ 🪡 AI Menu Import ═════════════
 let _aiImg = null;
