@@ -4985,11 +4985,14 @@ async function doExportOrders() {
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
   if (status) qs.set("status", status);
-  const tok = localStorage.getItem("store_token");
+  // استخدم STORE_TOKEN (الـ variable الحديث) — متطابق مع باقي الـ api() calls
+  const tok = STORE_TOKEN || localStorage.getItem("store_token");
+  if (!tok) { showToast("⚠️ الجلسة منتهية — أعد تسجيل الدخول", "error"); doLogout?.(); return; }
   try {
     const r = await fetch("/store/orders/export.csv?" + qs.toString(), {
-      headers: { "x-store-token": tok },
+      headers: { "x-store-token": tok, "Accept": "text/csv" },
     });
+    if (r.status === 401) { showToast("الجلسة منتهية — سجّل دخول من جديد", "error"); doLogout?.(); return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);

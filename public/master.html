@@ -2081,6 +2081,17 @@ async function refreshAll() {
   await Promise.all([loadStats(), loadDashStores(), loadOwnerSettings(), loadFinancial()]);
   loadWaStatuses();
   pollPendingBadge();
+  pollTicketsBadge();
+}
+
+async function pollTicketsBadge() {
+  try {
+    const s = await api("GET", "/master/support/tickets/stats");
+    const badge = document.getElementById("ticketsBadge");
+    if (!badge) return;
+    if (s.open > 0) { badge.style.display = "inline-block"; badge.textContent = s.open; }
+    else badge.style.display = "none";
+  } catch (e) { console.warn("[tickets-badge]", e?.message || e); }
 }
 
 async function pollPendingBadge() {
@@ -3151,18 +3162,8 @@ async function loadGrowth() {
   }
 }
 
-// عداد التذاكر المفتوحة في sidebar (polling)
-setInterval(() => {
-  fetch("/master/support/tickets/stats", { headers: { "x-master-token": localStorage.getItem("master_token") } })
-    .then(r => r.ok ? r.json() : null)
-    .then(s => {
-      if (!s) return;
-      const badge = document.getElementById("ticketsBadge");
-      if (!badge) return;
-      if (s.open > 0) { badge.style.display = "inline-block"; badge.textContent = s.open; }
-      else badge.style.display = "none";
-    }).catch(()=>{});
-}, 60000);
+// عداد التذاكر المفتوحة في sidebar — يستخدم api() الموحّد
+setInterval(() => { pollTicketsBadge(); }, 60000);
 
 async function loadPending() {
   const box = document.getElementById("pendingContainer");
