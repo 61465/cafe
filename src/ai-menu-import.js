@@ -53,11 +53,41 @@ ${ctx.businessType ? `🎯 *نوع النشاط:* ${ctx.businessType}${ctx.store
 ${ctx.existingCategories?.length ? `📂 *الأقسام الموجودة في المتجر:*\n${ctx.existingCategories.map(c => `  - ${c.name}`).join("\n")}\n⚠️ استخدم نفس هذه الأسماء بدقة لو ظهر منتج مطابق` : ""}
 
 ${ctx.imageWidth ? `📏 *أبعاد الصورة:* ${ctx.imageWidth} × ${ctx.imageHeight} pixel
-🖼️ *مهم:* لكل منتج له صورة مرئية في المنيو، أضف "image_bbox": {"x": رقم, "y": رقم, "w": رقم, "h": رقم}
-   - الإحداثيات بالـ pixel، يبدأ (0,0) أعلى يسار الصورة
-   - x = الحافة اليسرى، y = الحافة العلوية، w = العرض، h = الارتفاع
-   - **مهم:** ضع image_bbox فقط لو فعلاً ترى صورة للمنتج. لو نص فقط → اتركها null
-   - دقيقاً قدر الإمكان — لا توسّع الـ bbox على نص بجانبها` : ""}
+
+🖼️ ━━━━━━━━━━━━ اقتطاع صور المنتجات (مهم جداً) ━━━━━━━━━━━━
+لكل منتج له **صورة مرئية** في المنيو، أضف الحقل التالي بالضبط:
+"image_bbox": {"x": 100, "y": 250, "w": 180, "h": 180}
+
+شرح:
+- x = البكسل من اليسار  (0 = أقصى يسار، ${ctx.imageWidth} = أقصى يمين)
+- y = البكسل من الأعلى  (0 = أعلى، ${ctx.imageHeight} = الأسفل)
+- w = العرض بالبكسل
+- h = الارتفاع بالبكسل
+
+مثال كامل لمنتج له صورة:
+{
+  "name": "لاتيه",
+  "price": 18,
+  "description": "مع رغوة كثيفة",
+  "image_bbox": {"x": 320, "y": 580, "w": 200, "h": 200},
+  "confidence": "high"
+}
+
+مثال لمنتج بدون صورة (نص فقط):
+{
+  "name": "إسبريسو",
+  "price": 10,
+  "description": "",
+  "confidence": "high"
+}
+(لاحظ: لا يوجد image_bbox)
+
+قواعد bbox:
+1. ضع image_bbox **فقط** لو ترى صورة فعلية للمنتج في المنيو
+2. لا تضعه لو المنتج نص فقط أو فقط أيقونة عامة
+3. اقطع بدقة حول الصورة فقط — لا تضمّن النص أو السعر
+4. لو في شك → لا تضعه (أفضل من قطع خاطئ)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : ""}
 
 الناتج JSON فقط بالشكل:
 {
@@ -169,11 +199,16 @@ function _mergeExtractions(results) {
     }
   }
 
-  // عدّل confidence حسب الاتفاق
+  // عدّل confidence حسب الاتفاق + اجلب image_bbox من أي محاولة وضعتها
   for (const cat of (primary.categories || [])) {
     for (const it of (cat.items || [])) {
       const key = _normKey(it.name);
       const variants = allItemsByName.get(key) || [];
+      // 🖼️ لو الـ primary ليس له bbox، خذها من أي محاولة أخرى
+      if (!it.image_bbox) {
+        const withBbox = variants.find(v => v.image_bbox && typeof v.image_bbox === "object");
+        if (withBbox) it.image_bbox = withBbox.image_bbox;
+      }
       if (variants.length >= 2) {
         // أخذ متوسط السعر إن اختلفت
         const prices = variants.map(v => Number(v.price) || 0).filter(p => p > 0);
@@ -407,13 +442,32 @@ async function importMenuFromImage({ imageBase64, mimeType, existingProducts, ex
   const t1 = Date.now();
   console.log(`[ai-menu-import] brain1 done in ${t1 - t0}ms — items: ${_countItems(extracted)}`);
 
+  // 🛡️ احفظ image_bboxes من extracted قبل refine (brain2 الصغير قد يحذفها)
+  const bboxBackup = new Map();
+  for (const cat of extracted.categories || []) {
+    for (const it of cat.items || []) {
+      if (it.image_bbox && typeof it.image_bbox === "object") {
+        bboxBackup.set(_normKey(it.name), it.image_bbox);
+      }
+    }
+  }
+  console.log(`[ai-menu-import] bboxes detected in extracted: ${bboxBackup.size}/${_countItems(extracted)}`);
+
   // مرحلة 2 + 3: parallel — تنظيف + استعداد للـ diff
   const [refined, _] = await Promise.all([
     brain2_refineSchema(extracted),
     Promise.resolve(null),
   ]);
   const t2 = Date.now();
-  console.log(`[ai-menu-import] brain2 done in ${t2 - t1}ms — items: ${_countItems(refined)}`);
+
+  // 🔄 أعد الـ bboxes للـ refined (لأن brain2 قد حذفها)
+  for (const cat of refined.categories || []) {
+    for (const it of cat.items || []) {
+      const bbox = bboxBackup.get(_normKey(it.name));
+      if (bbox && !it.image_bbox) it.image_bbox = bbox;
+    }
+  }
+  console.log(`[ai-menu-import] brain2 done in ${t2 - t1}ms — items: ${_countItems(refined)}, bboxes restored`);
 
   // مرحلة 3: مقارنة (بعد التنظيف)
   const diff = await brain3_diff(refined, existingProducts, existingCategories);
