@@ -328,6 +328,224 @@ function calculateMonthlyPnL(storeId, yearMonth, opts = {}) {
 
 function round2(n) { return Math.round(Number(n) * 100) / 100; }
 
+// ─── 📊 1. Compare with previous month ────────────────────────────────────────
+function compareWithPrevMonth(storeId, yearMonth) {
+  const cur = calculateMonthlyPnL(storeId, yearMonth);
+  // احسب الشهر السابق
+  const [y, m] = yearMonth.split("-").map(Number);
+  const prevDate = new Date(y, m - 2, 1);
+  const prevYM = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+  const prev = calculateMonthlyPnL(storeId, prevYM);
+  const pct = (a, b) => b === 0 ? (a > 0 ? 100 : 0) : Math.round(((a - b) / Math.abs(b)) * 100);
+  return {
+    current: cur,
+    previous: prev,
+    previousMonth: prevYM,
+    change: {
+      revenue:       { value: round2(cur.revenue - prev.revenue),     pct: pct(cur.revenue, prev.revenue) },
+      cogs:          { value: round2(cur.cogs - prev.cogs),           pct: pct(cur.cogs, prev.cogs) },
+      grossProfit:   { value: round2(cur.grossProfit - prev.grossProfit), pct: pct(cur.grossProfit, prev.grossProfit) },
+      netProfit:     { value: round2(cur.netProfit - prev.netProfit), pct: pct(cur.netProfit, prev.netProfit) },
+      totalExpenses: { value: round2(cur.totalExpenses - prev.totalExpenses), pct: pct(cur.totalExpenses, prev.totalExpenses) },
+      ordersCount:   { value: cur.ordersCount - prev.ordersCount,     pct: pct(cur.ordersCount, prev.ordersCount) },
+      avgOrderValue: { value: round2(cur.avgOrderValue - prev.avgOrderValue), pct: pct(cur.avgOrderValue, prev.avgOrderValue) },
+    },
+  };
+}
+
+// ─── 🔮 2. Forecast — توقّع نهاية الشهر بناءً على معدل الأيام ─────────────────
+function forecastMonthEnd(storeId, yearMonth) {
+  const pnl = calculateMonthlyPnL(storeId, yearMonth);
+  const [y, m] = yearMonth.split("-").map(Number);
+  const now = new Date();
+  const isCurrentMonth = (now.getFullYear() === y && (now.getMonth() + 1) === m);
+  if (!isCurrentMonth) {
+    // شهر ماضٍ → النتائج الفعلية = التوقع
+    return { isCurrent: false, daysElapsed: 0, daysInMonth: 0, daysLeft: 0, forecast: pnl, runRatePerDay: 0 };
+  }
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const daysElapsed = now.getDate();
+  const daysLeft = daysInMonth - daysElapsed;
+  const runRateRevenue = daysElapsed > 0 ? pnl.revenue / daysElapsed : 0;
+  const runRateExpenses = daysElapsed > 0 ? pnl.totalExpenses / daysElapsed : 0;
+  const projectedRevenue = round2(pnl.revenue + runRateRevenue * daysLeft);
+  // المصاريف الثابتة قد لا تتغير، المتغيرة تنمو بالـ rate
+  const projectedExpenses = round2(pnl.fixedExpenses + (pnl.variableExpenses / Math.max(1, daysElapsed)) * daysInMonth);
+  const projectedCogs = round2(daysElapsed > 0 ? (pnl.cogs / daysElapsed) * daysInMonth : pnl.cogs);
+  const projectedGross = round2(projectedRevenue - projectedCogs);
+  const projectedNet = round2(projectedGross - projectedExpenses);
+  return {
+    isCurrent: true,
+    daysInMonth,
+    daysElapsed,
+    daysLeft,
+    runRatePerDay: round2(runRateRevenue),
+    actual: { revenue: pnl.revenue, netProfit: pnl.netProfit, ordersCount: pnl.ordersCount, totalExpenses: pnl.totalExpenses },
+    forecast: {
+      revenue: projectedRevenue,
+      cogs: projectedCogs,
+      grossProfit: projectedGross,
+      totalExpenses: projectedExpenses,
+      netProfit: projectedNet,
+      ordersCount: Math.round(daysElapsed > 0 ? (pnl.ordersCount / daysElapsed) * daysInMonth : pnl.ordersCount),
+    },
+  };
+}
+
+// ─── ⚖️ 3. Break-even — كم بيع تحتاج لتغطية المصاريف ─────────────────────────
+function calculateBreakEven(storeId, yearMonth) {
+  const pnl = calculateMonthlyPnL(storeId, yearMonth);
+  if (pnl.revenue === 0 || pnl.grossMargin <= 0) {
+    return {
+      breakEvenRevenue: pnl.totalExpenses,
+      breakEvenOrders: null,
+      breakEvenPct: 100,
+      message: "لا يمكن الحساب — لا توجد إيرادات أو هامش ربح موجب",
+    };
+  }
+  const contributionMargin = pnl.grossMargin / 100; // كنسبة عشرية
+  const breakEvenRevenue = pnl.totalExpenses / contributionMargin;
+  const breakEvenOrders = pnl.avgOrderValue > 0 ? Math.ceil(breakEvenRevenue / pnl.avgOrderValue) : null;
+  const breakEvenPct = pnl.revenue > 0 ? Math.round((pnl.revenue / breakEvenRevenue) * 100) : 0;
+  return {
+    breakEvenRevenue:  round2(breakEvenRevenue),
+    breakEvenOrders,
+    currentRevenue:    pnl.revenue,
+    currentOrders:     pnl.ordersCount,
+    breakEvenPct:      Math.min(200, breakEvenPct), // cap للعرض
+    ordersRemaining:   breakEvenOrders ? Math.max(0, breakEvenOrders - pnl.ordersCount) : null,
+    revenueRemaining:  round2(Math.max(0, breakEvenRevenue - pnl.revenue)),
+    avgOrderValue:     pnl.avgOrderValue,
+    isReached:         pnl.revenue >= breakEvenRevenue,
+  };
+}
+
+// ─── 🚨 4. Smart Alerts ────────────────────────────────────────────────────────
+function detectSmartAlerts(storeId, yearMonth) {
+  const alerts = [];
+  const pnl = calculateMonthlyPnL(storeId, yearMonth);
+  const compare = compareWithPrevMonth(storeId, yearMonth);
+  const allCosts = getAllProductCosts(storeId);
+
+  // 🚩 ربح صاف سالب
+  if (pnl.netProfit < 0) {
+    alerts.push({ level: "danger", icon: "📉", title: "خسارة الشهر", message: `ربحك الصافي حالياً ${pnl.netProfit.toFixed(2)} — مصاريفك أعلى من ربحك الإجمالي. راجع المصاريف الكبيرة.` });
+  }
+  // 🚩 هامش الربح الإجمالي ضعيف
+  if (pnl.revenue > 0 && pnl.grossMargin < 15) {
+    alerts.push({ level: "danger", icon: "⚠️", title: "هامش ربح ضعيف جداً", message: `هامش الربح ${pnl.grossMargin.toFixed(1)}% فقط. حاول رفع الأسعار أو خفض التكاليف.` });
+  } else if (pnl.revenue > 0 && pnl.grossMargin < 30) {
+    alerts.push({ level: "warning", icon: "⚠️", title: "هامش ربح متوسط", message: `هامش الربح ${pnl.grossMargin.toFixed(1)}%. النسبة الصحية للكافيهات/المطاعم 40-60%.` });
+  }
+  // 🚩 المصاريف زادت > 30% عن السابق
+  if (compare.change.totalExpenses.pct > 30 && compare.previous.totalExpenses > 0) {
+    alerts.push({ level: "warning", icon: "📈", title: "المصاريف ارتفعت", message: `مصاريفك زادت ${compare.change.totalExpenses.pct}% عن الشهر السابق (${compare.change.totalExpenses.value.toFixed(2)}). راجع البنود الجديدة.` });
+  }
+  // 🚩 الإيرادات نقصت > 20%
+  if (compare.change.revenue.pct < -20 && compare.previous.revenue > 0) {
+    alerts.push({ level: "warning", icon: "📉", title: "الإيرادات انخفضت", message: `إيراداتك أقل بـ ${Math.abs(compare.change.revenue.pct)}% عن الشهر السابق. حاول حملة بث أو كوبون.` });
+  }
+  // 🟢 الأرباح زادت
+  if (compare.change.netProfit.pct > 30 && compare.previous.netProfit > 0) {
+    alerts.push({ level: "success", icon: "🎉", title: "نمو ممتاز!", message: `ربحك زاد ${compare.change.netProfit.pct}% عن الشهر السابق. أنت تتقدم بقوة.` });
+  }
+  // 🚩 منتجات بهامش سالب
+  const lossProducts = (pnl.worstProducts || []).filter(p => p.profit < 0 && p.qty > 0);
+  if (lossProducts.length > 0) {
+    alerts.push({
+      level: "danger",
+      icon: "💸",
+      title: `${lossProducts.length} منتج يخسر مالاً`,
+      message: `أكبر خسارة: "${lossProducts[0].name}" (${lossProducts[0].profit.toFixed(2)}). راجع أسعار البيع أو تكلفة المنتج.`,
+      products: lossProducts.slice(0, 3).map(p => ({ id: p.id, name: p.name, profit: round2(p.profit), qty: p.qty })),
+    });
+  }
+  // 🚩 منتجات بدون تكلفة مسجلة (يمنع حساب الربح الصحيح)
+  const productsWithoutCost = (pnl.topProducts || []).filter(p => {
+    const c = allCosts.find(ac => ac.productId === p.id);
+    return !c || !c.cost;
+  });
+  if (productsWithoutCost.length > 0) {
+    alerts.push({
+      level: "info",
+      icon: "💡",
+      title: `${productsWithoutCost.length} منتج بدون تكلفة مسجلة`,
+      message: `سجّل تكلفة هذه المنتجات لتحصل على هامش ربح دقيق.`,
+    });
+  }
+  return alerts;
+}
+
+// ─── 🔁 5. Recurring expenses ─────────────────────────────────────────────────
+function _recurringFile(storeId) {
+  return path.join(ensureStoreDir(storeId), "recurring-expenses.json");
+}
+
+function listRecurringExpenses(storeId) {
+  return readJson(_recurringFile(storeId), { items: [] }).items;
+}
+
+function addRecurringExpense(storeId, { type, amount, note, dayOfMonth, fixed }, actor, req) {
+  const data = readJson(_recurringFile(storeId), { items: [] });
+  const item = {
+    id: "rec_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    type,
+    amount: Number(amount) || 0,
+    note: String(note || "").slice(0, 200),
+    dayOfMonth: Math.max(1, Math.min(28, Number(dayOfMonth) || 1)),
+    fixed: !!fixed,
+    active: true,
+    createdAt: new Date().toISOString(),
+    lastAppliedYM: null,
+  };
+  data.items.push(item);
+  writeJson(_recurringFile(storeId), data);
+  return item;
+}
+
+function deleteRecurringExpense(storeId, id) {
+  const data = readJson(_recurringFile(storeId), { items: [] });
+  data.items = data.items.filter(i => i.id !== id);
+  writeJson(_recurringFile(storeId), data);
+}
+
+function toggleRecurringExpense(storeId, id) {
+  const data = readJson(_recurringFile(storeId), { items: [] });
+  const i = data.items.find(x => x.id === id);
+  if (!i) return null;
+  i.active = !i.active;
+  writeJson(_recurringFile(storeId), data);
+  return i;
+}
+
+// يُستدعى يومياً للتحقق من تطبيق المصاريف المتكررة
+function applyDueRecurringExpenses(storeId) {
+  const data = readJson(_recurringFile(storeId), { items: [] });
+  const today = new Date();
+  const yearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const day = today.getDate();
+  let applied = 0;
+  for (const item of data.items) {
+    if (!item.active) continue;
+    if (item.lastAppliedYM === yearMonth) continue; // مطبّق هذا الشهر
+    if (day < item.dayOfMonth) continue;
+    addExpense(storeId, {
+      type: item.type,
+      amount: item.amount,
+      note: `${item.note} (تلقائي: ${item.id})`,
+      fixed: item.fixed,
+      date: new Date().toISOString(),
+      source: "recurring",
+      recurringId: item.id,
+    });
+    item.lastAppliedYM = yearMonth;
+    applied++;
+  }
+  if (applied > 0) writeJson(_recurringFile(storeId), data);
+  return applied;
+}
+
+
 function groupExpensesByType(expenses) {
   const out = {};
   for (const e of expenses) {
@@ -484,17 +702,25 @@ function pctChange(curr, prev) {
 
 function startMonthlyAccountingCron() {
   // يفحص يومياً، يحسب P&L تلقائياً لكل المتاجر إذا 1st of month
+  // + يطبّق المصاريف المتكررة المستحقة
   setInterval(() => {
     const now = new Date();
+    if (!fs.existsSync(ACC_DIR)) return;
+    const stores = fs.readdirSync(ACC_DIR);
+    // 🔁 تطبيق المصاريف المتكررة (يومياً)
+    for (const sid of stores) {
+      try {
+        const applied = applyDueRecurringExpenses(sid);
+        if (applied > 0) console.log(`[accounting] applied ${applied} recurring expenses for ${sid}`);
+      } catch (e) { console.warn(`[recurring] failed ${sid}:`, e.message); }
+    }
+    // 📊 snapshot شهري (1st of month فقط)
     if (now.getUTCDate() !== 1) return;
     const lastMonth = new Date(now); lastMonth.setUTCDate(0);
     const ym = `${lastMonth.getUTCFullYear()}-${String(lastMonth.getUTCMonth()+1).padStart(2,"0")}`;
-    if (!fs.existsSync(ACC_DIR)) return;
-    const stores = fs.readdirSync(ACC_DIR);
     for (const sid of stores) {
       try {
         if (!getStoredMonthlyPnL(sid, ym)) {
-          // احسب وخزّن (بدون إقفال — العميل يقفل يدوياً)
           const pnl = calculateMonthlyPnL(sid, ym);
           writeJson(_monthlyFile(sid, ym), { ...pnl, closed: false });
           console.log(`[accounting] auto-snapshot ${sid} ${ym}: net=${pnl.netProfit}`);
@@ -512,4 +738,8 @@ module.exports = {
   calculateYearlySummary, closeYear,
   getDashboardKPIs,
   startMonthlyAccountingCron,
+  // 🆕 v2
+  compareWithPrevMonth, forecastMonthEnd, calculateBreakEven, detectSmartAlerts,
+  listRecurringExpenses, addRecurringExpense, deleteRecurringExpense,
+  toggleRecurringExpense, applyDueRecurringExpenses,
 };

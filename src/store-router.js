@@ -2396,6 +2396,79 @@ router.get("/store/accounting/top-products", auth, (req, res) => {
   });
 });
 
+// ═════ 🆕 Accounting v2 — Compare / Forecast / Break-even / Alerts / Recurring
+router.get("/store/accounting/compare", auth, (req, res) => {
+  const ym = req.query.yearMonth || new Date().toISOString().slice(0, 7);
+  res.json(accounting.compareWithPrevMonth(req.storeId, ym));
+});
+
+router.get("/store/accounting/forecast", auth, (req, res) => {
+  const ym = req.query.yearMonth || new Date().toISOString().slice(0, 7);
+  res.json(accounting.forecastMonthEnd(req.storeId, ym));
+});
+
+router.get("/store/accounting/break-even", auth, (req, res) => {
+  const ym = req.query.yearMonth || new Date().toISOString().slice(0, 7);
+  res.json(accounting.calculateBreakEven(req.storeId, ym));
+});
+
+router.get("/store/accounting/alerts", auth, (req, res) => {
+  const ym = req.query.yearMonth || new Date().toISOString().slice(0, 7);
+  res.json({ alerts: accounting.detectSmartAlerts(req.storeId, ym) });
+});
+
+router.get("/store/accounting/recurring", auth, (req, res) => {
+  res.json({ items: accounting.listRecurringExpenses(req.storeId) });
+});
+
+router.post("/store/accounting/recurring", auth, (req, res) => {
+  const { type, amount, note, dayOfMonth, fixed } = req.body || {};
+  if (!type || !amount) return res.status(400).json({ error: "type + amount مطلوبان" });
+  const item = accounting.addRecurringExpense(req.storeId, { type, amount, note, dayOfMonth, fixed });
+  res.json({ ok: true, item });
+});
+
+router.delete("/store/accounting/recurring/:id", auth, (req, res) => {
+  accounting.deleteRecurringExpense(req.storeId, req.params.id);
+  res.json({ ok: true });
+});
+
+router.post("/store/accounting/recurring/:id/toggle", auth, (req, res) => {
+  const updated = accounting.toggleRecurringExpense(req.storeId, req.params.id);
+  if (!updated) return res.status(404).json({ error: "غير موجود" });
+  res.json({ ok: true, item: updated });
+});
+
+// CSV export للـ P&L
+router.get("/store/accounting/monthly/:yearMonth/csv", auth, (req, res) => {
+  const pnl = accounting.calculateMonthlyPnL(req.storeId, req.params.yearMonth);
+  const rows = [
+    ["البند", "القيمة (ر.س)"],
+    ["الإيرادات", pnl.revenue],
+    ["تكلفة البضاعة المباعة (COGS)", pnl.cogs],
+    ["مجمل الربح", pnl.grossProfit],
+    ["هامش الربح الإجمالي %", pnl.grossMargin],
+    ["مصاريف ثابتة", pnl.fixedExpenses],
+    ["مصاريف متغيرة", pnl.variableExpenses],
+    ["إجمالي المصاريف", pnl.totalExpenses],
+    ["الخصومات", pnl.discounts],
+    ["VAT المخرجة", pnl.vatOutput],
+    ["صافي الربح", pnl.netProfit],
+    ["هامش الربح الصافي %", pnl.netMargin],
+    ["عدد الطلبات", pnl.ordersCount],
+    ["العملاء الفريدون", pnl.uniqueCustomers],
+    ["متوسط قيمة الطلب", pnl.avgOrderValue],
+    [],
+    ["أفضل المنتجات ربحاً", ""],
+    ["المنتج", "الربح", "الكمية"],
+    ...pnl.topProducts.slice(0, 10).map(p => [p.name, p.profit, p.qty]),
+  ];
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c || "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="pnl-${req.params.yearMonth}.csv"`);
+  res.send(csv);
+});
+
 // ── نصائح AI المحاسب
 router.post("/store/accounting/ai-advice", auth, async (req, res) => {
   try {

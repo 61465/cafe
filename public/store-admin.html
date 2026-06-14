@@ -1783,6 +1783,18 @@ tr:hover td{background:#fafcfa}
       <!-- KPIs -->
       <div id="accKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px"></div>
 
+      <!-- 🚨 Smart Alerts -->
+      <div id="accAlerts" style="display:none;margin-bottom:14px"></div>
+
+      <!-- 🔮 Forecast + ⚖️ Break-even (side-by-side) -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px">
+        <div id="accForecast" class="card" style="background:linear-gradient(135deg,#eff6ff,#fff);border:1px solid #93c5fd"></div>
+        <div id="accBreakEven" class="card" style="background:linear-gradient(135deg,#fef3c7,#fff);border:1px solid #fcd34d"></div>
+      </div>
+
+      <!-- 📊 Compare with previous month -->
+      <div id="accCompare" class="card" style="margin-bottom:14px;display:none"></div>
+
       <!-- AI Advice Card -->
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #86efac">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px">
@@ -1794,10 +1806,11 @@ tr:hover td{background:#fafcfa}
 
       <!-- Sub-tabs -->
       <div class="tabs" style="margin-bottom:14px">
-        <button class="tab active" id="subTabCosts"    onclick="showAccSubTab('costs')">💰 تكاليف المنتجات</button>
-        <button class="tab"        id="subTabExpenses" onclick="showAccSubTab('expenses')">📒 المصاريف</button>
-        <button class="tab"        id="subTabPnL"      onclick="showAccSubTab('pnl')">📊 الأرباح والخسائر</button>
-        <button class="tab"        id="subTabYear"     onclick="showAccSubTab('year')">📅 الملخص السنوي</button>
+        <button class="tab active" id="subTabCosts"     onclick="showAccSubTab('costs')">💰 تكاليف المنتجات</button>
+        <button class="tab"        id="subTabExpenses"  onclick="showAccSubTab('expenses')">📒 المصاريف</button>
+        <button class="tab"        id="subTabRecurring" onclick="showAccSubTab('recurring')">🔁 مصاريف متكررة</button>
+        <button class="tab"        id="subTabPnL"       onclick="showAccSubTab('pnl')">📊 الأرباح والخسائر</button>
+        <button class="tab"        id="subTabYear"      onclick="showAccSubTab('year')">📅 الملخص السنوي</button>
       </div>
 
       <!-- Product Costs -->
@@ -1843,11 +1856,26 @@ tr:hover td{background:#fafcfa}
         </div>
       </div>
 
+      <!-- 🔁 Recurring Expenses -->
+      <div id="accRecurring" class="card" style="display:none;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <div>
+            <h3 style="font-size:15px;font-weight:800;margin:0">🔁 المصاريف المتكررة (شهرية)</h3>
+            <p style="color:#6b7280;font-size:12px;margin:4px 0 0">إيجار/اشتراكات/فواتير تُضاف تلقائياً أول كل شهر</p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddRecurringModal()">➕ إضافة متكرر</button>
+        </div>
+        <div id="accRecurringList"></div>
+      </div>
+
       <!-- P&L -->
       <div id="accPnl" class="card" style="display:none;margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
           <h3 style="font-size:15px;font-weight:800;margin:0">قائمة الأرباح والخسائر — <span id="pnlMonthLabel">—</span></h3>
-          <button class="btn btn-outline" onclick="closeAccountingMonth()" id="closeMonthBtn">🔒 تقفيل الشهر</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-outline" onclick="exportPnLCsv()">📥 تصدير CSV</button>
+            <button class="btn btn-outline" onclick="closeAccountingMonth()" id="closeMonthBtn">🔒 تقفيل الشهر</button>
+          </div>
         </div>
         <div id="accPnlContent"></div>
       </div>
@@ -2724,6 +2752,13 @@ function populateMonthPicker() {
 }
 
 async function loadAccountingDashboard() {
+  // حمّل كل المؤشرات الجديدة بالتوازي
+  Promise.all([
+    loadAccountingAlerts().catch(()=>{}),
+    loadAccountingForecast().catch(()=>{}),
+    loadAccountingBreakEven().catch(()=>{}),
+    loadAccountingCompare().catch(()=>{}),
+  ]);
   try {
     const k = await api("GET", "/store/accounting/dashboard");
     const fmt = (n) => (n||0).toLocaleString("ar-EG", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -2755,18 +2790,190 @@ async function loadAccountingDashboard() {
   }
 }
 
+// 🚨 Smart Alerts
+async function loadAccountingAlerts() {
+  const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
+  const r = await api("GET", `/store/accounting/alerts?yearMonth=${ym}`);
+  const box = document.getElementById("accAlerts");
+  if (!r.alerts || !r.alerts.length) { box.style.display = "none"; return; }
+  box.style.display = "";
+  const colors = {
+    danger:  { bg: "#fef2f2", border: "#fecaca", text: "#7f1d1d" },
+    warning: { bg: "#fffbeb", border: "#fcd34d", text: "#78350f" },
+    info:    { bg: "#eff6ff", border: "#bfdbfe", text: "#1e40af" },
+    success: { bg: "#f0fdf4", border: "#86efac", text: "#14532d" },
+  };
+  box.innerHTML = r.alerts.map(a => {
+    const c = colors[a.level] || colors.info;
+    return `<div style="background:${c.bg};border:1px solid ${c.border};color:${c.text};border-radius:10px;padding:11px 14px;margin-bottom:6px;display:flex;align-items:flex-start;gap:10px">
+      <span style="font-size:20px">${a.icon}</span>
+      <div style="flex:1"><div style="font-weight:800;font-size:13px">${esc(a.title)}</div><div style="font-size:12.5px;margin-top:3px;line-height:1.6">${esc(a.message)}</div></div>
+    </div>`;
+  }).join("");
+}
+
+// 🔮 Forecast
+async function loadAccountingForecast() {
+  const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
+  const r = await api("GET", `/store/accounting/forecast?yearMonth=${ym}`);
+  const box = document.getElementById("accForecast");
+  if (!r.isCurrent) { box.innerHTML = `<div style="padding:14px;color:#6b7280;font-size:13px;text-align:center">📅 الشهر مكتمل — لا حاجة للتوقع</div>`; return; }
+  const fmt = n => (Number(n)||0).toLocaleString("ar-EG", { maximumFractionDigits: 0 });
+  const a = r.actual || {}; const f = r.forecast || {};
+  const pct = r.daysInMonth ? Math.round((r.daysElapsed / r.daysInMonth) * 100) : 0;
+  box.innerHTML = `
+    <h3 style="margin:0 0 12px;color:#1e40af;font-size:15px;font-weight:800">🔮 توقع نهاية الشهر</h3>
+    <div style="background:#fff;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#374151">
+      <div>اليوم ${r.daysElapsed} من ${r.daysInMonth} (${pct}%) · باقي ${r.daysLeft} يوم</div>
+      <div style="background:#dbeafe;height:6px;border-radius:3px;margin-top:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#2563eb"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:#fff;padding:10px;border-radius:8px"><div style="font-size:11px;color:#6b7280">💵 الإيرادات</div><div style="font-size:11px;color:#9ca3af">الآن: ${fmt(a.revenue)}</div><div style="font-size:16px;font-weight:900;color:#1e40af">→ ${fmt(f.revenue)}</div></div>
+      <div style="background:#fff;padding:10px;border-radius:8px"><div style="font-size:11px;color:#6b7280">💰 الربح الصافي</div><div style="font-size:11px;color:#9ca3af">الآن: ${fmt(a.netProfit)}</div><div style="font-size:16px;font-weight:900;color:${f.netProfit>=0?'#16a34a':'#dc2626'}">→ ${fmt(f.netProfit)}</div></div>
+      <div style="background:#fff;padding:10px;border-radius:8px"><div style="font-size:11px;color:#6b7280">📦 الطلبات</div><div style="font-size:11px;color:#9ca3af">الآن: ${a.ordersCount||0}</div><div style="font-size:16px;font-weight:900;color:#1e40af">→ ${f.ordersCount||0}</div></div>
+      <div style="background:#fff;padding:10px;border-radius:8px"><div style="font-size:11px;color:#6b7280">📊 معدل يومي</div><div style="font-size:11px;color:#9ca3af">إيراد/يوم</div><div style="font-size:16px;font-weight:900;color:#1e40af">${fmt(r.runRatePerDay)}</div></div>
+    </div>`;
+}
+
+// ⚖️ Break-even
+async function loadAccountingBreakEven() {
+  const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
+  const r = await api("GET", `/store/accounting/break-even?yearMonth=${ym}`);
+  const box = document.getElementById("accBreakEven");
+  const fmt = n => (Number(n)||0).toLocaleString("ar-EG", { maximumFractionDigits: 0 });
+  const pct = Math.min(100, r.breakEvenPct || 0);
+  const color = r.isReached ? "#16a34a" : pct >= 80 ? "#eab308" : pct >= 50 ? "#f59e0b" : "#dc2626";
+  box.innerHTML = `
+    <h3 style="margin:0 0 12px;color:#78350f;font-size:15px;font-weight:800">⚖️ نقطة التعادل</h3>
+    ${r.message ? `<div style="background:#fef3c7;padding:10px;border-radius:8px;color:#78350f;font-size:13px">${esc(r.message)}</div>` : `
+      <div style="background:#fff;padding:12px;border-radius:8px;margin-bottom:10px">
+        <div style="font-size:11px;color:#6b7280">الإيرادات لتغطية المصاريف</div>
+        <div style="font-size:20px;font-weight:900;color:#78350f">${fmt(r.breakEvenRevenue)} ر.س</div>
+        ${r.breakEvenOrders ? `<div style="font-size:11px;color:#6b7280;margin-top:4px">≈ <b>${r.breakEvenOrders}</b> طلب (بمتوسط ${fmt(r.avgOrderValue)})</div>`:""}
+      </div>
+      <div style="background:#fff;padding:10px;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#374151;margin-bottom:4px">
+          <span>${r.isReached ? "🎉 تجاوزت نقطة التعادل" : `${fmt(r.revenueRemaining)} ر.س متبقي`}</span>
+          <span style="font-weight:800;color:${color}">${r.breakEvenPct}%</span>
+        </div>
+        <div style="background:#f3f4f6;height:10px;border-radius:5px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${color};transition:width .3s"></div></div>
+        ${r.isReached ? `<div style="font-size:11px;color:#16a34a;margin-top:6px">✅ كل طلب جديد من الآن = ربح صافي!</div>` : (r.ordersRemaining ? `<div style="font-size:11px;color:#6b7280;margin-top:6px">باقي ${r.ordersRemaining} طلب للوصول</div>` : "")}
+      </div>`}`;
+}
+
+// 📊 Compare with prev month
+async function loadAccountingCompare() {
+  const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
+  const r = await api("GET", `/store/accounting/compare?yearMonth=${ym}`);
+  const box = document.getElementById("accCompare");
+  const ch = r.change || {};
+  const fmt = n => (Number(n)||0).toLocaleString("ar-EG", { maximumFractionDigits: 0 });
+  const row = (label, c, pct, suffix="") => {
+    const color = c.pct > 0 ? "#16a34a" : c.pct < 0 ? "#dc2626" : "#6b7280";
+    const arrow = c.pct > 0 ? "↑" : c.pct < 0 ? "↓" : "→";
+    return `<div style="padding:9px 12px;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center;font-size:13px">
+      <span style="color:#374151;font-weight:700">${label}</span>
+      <span style="display:flex;gap:14px;align-items:center">
+        <span style="color:#9ca3af;font-size:12px">${fmt(r.previous[pct]||0)}${suffix}</span>
+        <span style="color:#1f2937;font-weight:800">${fmt(r.current[pct]||0)}${suffix}</span>
+        <span style="color:${color};font-weight:800;min-width:60px;text-align:left">${arrow} ${Math.abs(c.pct||0)}%</span>
+      </span>
+    </div>`;
+  };
+  box.style.display = "";
+  box.innerHTML = `
+    <h3 style="margin:0 0 12px;font-size:15px;font-weight:800">📊 مقارنة بالشهر السابق (${r.previousMonth})</h3>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">
+      ${row("💵 الإيرادات", ch.revenue, "revenue", " ر.س")}
+      ${row("🛒 تكلفة البضاعة", ch.cogs, "cogs", " ر.س")}
+      ${row("📈 مجمل الربح", ch.grossProfit, "grossProfit", " ر.س")}
+      ${row("📒 المصاريف", ch.totalExpenses, "totalExpenses", " ر.س")}
+      ${row("💰 صافي الربح", ch.netProfit, "netProfit", " ر.س")}
+      ${row("📦 عدد الطلبات", ch.ordersCount, "ordersCount", "")}
+      ${row("🧾 متوسط الطلب", ch.avgOrderValue, "avgOrderValue", " ر.س")}
+    </div>`;
+}
+
+// 🔁 Recurring Expenses
+async function loadRecurringExpenses() {
+  try {
+    const r = await api("GET", "/store/accounting/recurring");
+    const list = r.items || [];
+    const box = document.getElementById("accRecurringList");
+    if (!list.length) {
+      box.innerHTML = `<div style="text-align:center;padding:30px;color:#9ca3af">لا توجد مصاريف متكررة بعد.<br>أضف الإيجار/الاشتراكات لتُسجّل تلقائياً.</div>`;
+      return;
+    }
+    box.innerHTML = list.map(it => {
+      const monthly = it.fixed ? "ثابت" : "متغير";
+      const status = it.active ? `<span style="background:#dcfce7;color:#166534;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700">🟢 مفعّل</span>` : `<span style="background:#fee2e2;color:#991b1b;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700">⏸️ متوقف</span>`;
+      const last = it.lastAppliedYM ? `آخر تطبيق: ${it.lastAppliedYM}` : "لم يُطبّق بعد";
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:6px">
+        <div style="flex:1">
+          <div style="font-weight:800;font-size:14px">${esc(it.note || it.type)}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:3px">يوم ${it.dayOfMonth} من كل شهر · ${monthly} · ${last}</div>
+        </div>
+        <div style="font-weight:900;font-size:16px;color:#1f2937">${(it.amount||0).toFixed(2)} ر.س</div>
+        ${status}
+        <button onclick="toggleRecurring('${it.id}')" style="background:none;border:1px solid #d1d5db;color:#374151;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px">${it.active?'⏸️':'▶️'}</button>
+        <button onclick="deleteRecurring('${it.id}')" style="background:none;border:1px solid #fecaca;color:#dc2626;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px">🗑️</button>
+      </div>`;
+    }).join("");
+  } catch (e) { showToast("فشل التحميل", "error"); }
+}
+
+function openAddRecurringModal() {
+  const type = prompt("نوع المصروف (مثلاً: rent / utilities / salaries):", "rent");
+  if (!type) return;
+  const amount = parseFloat(prompt("المبلغ الشهري (ر.س):", "0") || "0");
+  if (!amount || amount <= 0) { showToast("مبلغ غير صحيح", "error"); return; }
+  const note = prompt("ملاحظة وصفية (مثلاً: إيجار المحل):", "") || "";
+  const dayOfMonth = parseInt(prompt("في أي يوم من الشهر يُسجّل؟ (1-28):", "1") || "1");
+  const fixed = confirm("هل هذا مصروف ثابت (إيجار/راتب)؟\n[موافق = ثابت] [إلغاء = متغير]");
+  api("POST", "/store/accounting/recurring", { type, amount, note, dayOfMonth, fixed })
+    .then(() => { showToast("✅ تمت الإضافة", "success"); loadRecurringExpenses(); })
+    .catch(e => showToast(e.message || "فشل", "error"));
+}
+
+async function toggleRecurring(id) {
+  try { await api("POST", `/store/accounting/recurring/${id}/toggle`); loadRecurringExpenses(); }
+  catch (e) { showToast(e.message || "فشل", "error"); }
+}
+async function deleteRecurring(id) {
+  if (!confirm("حذف هذا المصروف المتكرر؟ (المصاريف المسجلة سابقاً تبقى)")) return;
+  try { await api("DELETE", `/store/accounting/recurring/${id}`); loadRecurringExpenses(); }
+  catch (e) { showToast(e.message || "فشل", "error"); }
+}
+
+// 📥 CSV export
+async function exportPnLCsv() {
+  const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
+  const tok = localStorage.getItem("store_token");
+  try {
+    const r = await fetch(`/store/accounting/monthly/${ym}/csv`, { headers: { "x-store-token": tok } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `pnl-${ym}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    showToast("✅ تم تنزيل الملف", "success");
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
+}
+
 function showAccSubTab(name) {
   _accSubTab = name;
-  ["costs","expenses","pnl","year"].forEach(n => {
+  ["costs","expenses","recurring","pnl","year"].forEach(n => {
     const sec = document.getElementById("acc" + n.charAt(0).toUpperCase() + n.slice(1));
     const btn = document.getElementById("subTab" + n.charAt(0).toUpperCase() + n.slice(1));
     if (sec) sec.style.display = n === name ? "" : "none";
     if (btn) btn.classList.toggle("active", n === name);
   });
-  if (name === "costs")    loadProductCostsTable();
-  if (name === "expenses") loadExpenses();
-  if (name === "pnl")      loadPnL();
-  if (name === "year")     loadYearSummary();
+  if (name === "costs")     loadProductCostsTable();
+  if (name === "expenses")  loadExpenses();
+  if (name === "recurring") loadRecurringExpenses();
+  if (name === "pnl")       loadPnL();
+  if (name === "year")      loadYearSummary();
 }
 
 async function loadProductCostsTable() {
