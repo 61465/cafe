@@ -62,9 +62,49 @@ function normalizeAr(s) {
     .trim();
 }
 
+// 🛡️ Anti-adversarial: كشف محاولات prompt injection / spam / abusive input
+function _detectAdversarial(text) {
+  const t = String(text || "");
+  // محاولة تجاوز التعليمات (prompt injection)
+  if (/ignore\s+(previous|prior|above|all)|system\s*:|<\|im_start\|>|assistant\s*:|forget\s+(everything|instructions)/i.test(t)) {
+    return { reason: "prompt_injection", action: "reject" };
+  }
+  // فقط رموز/إيموجي/symbols (spam visual)
+  const stripped = t.replace(/[؀-ۿݐ-ݿa-zA-Z0-9\s]/g, "");
+  if (stripped.length > 20 && stripped.length / Math.max(1, t.length) > 0.7) {
+    return { reason: "symbol_spam", action: "ignore" };
+  }
+  // تكرار حرف مفرط (مثل اااااااا)
+  if (/(.)\1{10,}/.test(t)) {
+    return { reason: "char_flood", action: "ignore" };
+  }
+  // رسالة طويلة جداً (>2000 حرف = غير طبيعي للمنيو)
+  if (t.length > 2000) {
+    return { reason: "too_long", action: "truncate" };
+  }
+  // روابط مشبوهة (phishing patterns)
+  if (/bit\.ly\/|tinyurl\.|t\.co\/|click\s*here|verify\s*account/i.test(t)) {
+    return { reason: "suspicious_link", action: "flag" };
+  }
+  return null;
+}
+
 async function parseIntent(text, session = {}, menuCtx = null) {
   const raw  = String(text || "").trim();
   const norm = normalizeAr(raw); // ⭐ normalize كل اللهجات الآن
+
+  // 🛡️ فحص رسائل عدائية قبل أي معالجة
+  const adv = _detectAdversarial(raw);
+  if (adv) {
+    if (adv.action === "reject" || adv.action === "ignore") {
+      return { type: "gibberish", value: null, _adversarial: adv.reason };
+    }
+    if (adv.action === "truncate") {
+      // تابع بنص مقطوع
+    } else if (adv.action === "flag") {
+      return { type: "suspicious", value: null, _reason: adv.reason };
+    }
+  }
 
   // ── Fast path 1: رقم مباشر ────────────────────────────────────────────────
   if (/^\d{1,3}$/.test(raw)) {

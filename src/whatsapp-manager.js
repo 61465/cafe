@@ -340,12 +340,14 @@ async function initSession(storeId) {
       session.qr                = null;
       session.reconnectAttempts = 0;
       console.log(`✅ [${storeId}] WhatsApp connected`);
+      try { require("./maintenance-alerts").recordWhatsAppConnect(storeId); } catch {}
       scheduleTryTTL(storeId);
     }
 
     if (connection === "close") {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       console.log(`⚠️  [${storeId}] Disconnected — reason: ${statusCode}`);
+      try { require("./maintenance-alerts").recordWhatsAppDisconnect(storeId); } catch {}
       if (statusCode === DisconnectReason.loggedOut) {
         session.status            = "disconnected";
         session.reconnectAttempts = 0;

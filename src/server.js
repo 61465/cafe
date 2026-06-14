@@ -108,6 +108,17 @@ const webTokenLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: "طلبات كثيرة على الروابط، حاول بعد قليل" },
 });
+// 🛡️ AI/heavy endpoints: حد أقل لمنع abuse على المفاتيح
+const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 30, // 30 طلب AI/ساعة لكل IP
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: "حد طلبات AI تم تجاوزه — انتظر ساعة" },
+});
+app.use("/store/menu/ai-import",          aiLimiter);
+app.use("/store/bot-questions/generate",  aiLimiter);
+app.use("/store/accounting/ai-advice",    aiLimiter);
+app.use("/store/ratings/ai-analysis",     aiLimiter);
+
 app.use("/store/",        apiLimiter);
 app.use("/api/",          apiLimiter);
 app.use("/master/login",  loginLimiter);
@@ -6587,6 +6598,10 @@ if (require.main === module) {
       dailyReport.start();
       orderScheduler.start();
       require("./monthly-archive").startMonthlyCron();
+      // 🛡️ Maintenance alerts (developer-only — writes to data/alerts/)
+      const maint = require("./maintenance-alerts");
+      maint.installGlobalHandlers();
+      maint.startHealthMonitor();
       require("./daily-archive").startScheduler();
       require("./accounting").startMonthlyAccountingCron();
       require("./health-monitor").startPeriodicChecks();
