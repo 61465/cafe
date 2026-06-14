@@ -10,8 +10,10 @@
  * النموذج: meta-llama/llama-4-scout (Groq) — أفضل دقة عربية حالياً
  */
 
-const GROQ_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_KEY   = process.env.GROQ_API_KEY || "";
+const GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions";
+const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
 
 let sharp; try { sharp = require("sharp"); } catch {}
 
@@ -161,12 +163,75 @@ ${ctx.imageWidth ? `📏 *أبعاد الصورة:* ${ctx.imageWidth} × ${ctx.i
   }
 }
 
+// 🧠 Gemini Vision (أدق في object detection — لو المفتاح متاح)
+async function _callGeminiVision(imageBase64, mimeType, ctx) {
+  if (!GEMINI_KEY) return null;
+  const prompt =
+`أنت محلّل صور خبير. اقرأ صورة المنيو هذه واستخرج JSON دقيق:
+${ctx.businessType ? `نوع النشاط: ${ctx.businessType}` : ""}
+${ctx.existingCategories?.length ? `الأقسام الموجودة: ${ctx.existingCategories.map(c=>c.name).join("، ")}` : ""}
+أبعاد الصورة: ${ctx.imageWidth} × ${ctx.imageHeight} pixel
+
+أعد JSON بهذا الشكل:
+{
+  "categories": [
+    {
+      "name": "اسم القسم",
+      "items": [
+        {
+          "name": "اسم المنتج",
+          "price": رقم,
+          "description": "الوصف",
+          "image_bbox": {"x": رقم, "y": رقم, "w": رقم, "h": رقم},
+          "confidence": "high"
+        }
+      ]
+    }
+  ]
+}
+
+🎯 image_bbox: ضع إحداثيات صورة المنتج بدقة عالية بالـ pixel.
+- (0,0) أعلى يسار
+- لا تضع image_bbox لو المنتج نص فقط
+- اقطع حول الصورة بدقة فائقة — لا تضمّن النص بجوارها
+- ادمج الأحجام في "sizes": [{"label":"كبير","price":15}, ...]`;
+
+  try {
+    const res = await fetch(GEMINI_URL + "?key=" + GEMINI_KEY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType || "image/jpeg", data: imageBase64 } },
+          ],
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 6000, responseMimeType: "application/json" },
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (!res.ok) { console.warn(`[gemini-vision] HTTP ${res.status}`); return null; }
+    const data = await res.json();
+    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    return JSON.parse(content);
+  } catch (e) {
+    console.warn(`[gemini-vision] failed: ${e.message}`);
+    return null;
+  }
+}
+
 // 3 محاولات بنماذج/temperatures مختلفة → نأخذ الأفضل (majority + ثقة)
-async function brain1_extractFromImage(imageDataUrl, ctx = {}) {
+// + Gemini إن توفّر (أدق في الـ bboxes)
+async function brain1_extractFromImage(imageDataUrl, ctx = {}, imageBase64 = null, mimeType = null) {
   const attempts = await Promise.allSettled([
     _callVision(imageDataUrl, VISION_MODELS[0], 0.0, ctx),
     _callVision(imageDataUrl, VISION_MODELS[0], 0.2, ctx),
     _callVision(imageDataUrl, VISION_MODELS[1], 0.1, ctx),
+    // 🌟 Gemini كـ vision 4 (أدق في bboxes)
+    GEMINI_KEY && imageBase64
+      ? _callGeminiVision(imageBase64, mimeType, ctx).then(r => r || Promise.reject(new Error("gemini null")))
+      : Promise.reject(new Error("no gemini")),
   ]);
 
   const ok = attempts.filter(a => a.status === "fulfilled").map(a => a.value);
@@ -438,7 +503,7 @@ async function importMenuFromImage({ imageBase64, mimeType, existingProducts, ex
     imageHeight: imgMeta.imageHeight,
   };
   const t0 = Date.now();
-  const extracted = await brain1_extractFromImage(imageDataUrl, ctx);
+  const extracted = await brain1_extractFromImage(imageDataUrl, ctx, imageBase64, mimeType);
   const t1 = Date.now();
   console.log(`[ai-menu-import] brain1 done in ${t1 - t0}ms — items: ${_countItems(extracted)}`);
 
@@ -523,10 +588,18 @@ async function _cropImagesForNewItems(refined, diff, imgMeta) {
   for (const item of diff.newItems || []) {
     const bbox = acceptedMap.get(_normKey(item.name));
     if (!bbox) continue;
-    const x = Math.max(0, Math.round(bbox.x));
-    const y = Math.max(0, Math.round(bbox.y));
-    const w = Math.max(20, Math.min(imgMeta.imageWidth - x, Math.round(bbox.w)));
-    const h = Math.max(20, Math.min(imgMeta.imageHeight - y, Math.round(bbox.h)));
+    // 🛡️ Shrink 8% من كل جهة لتجنّب أخذ نص بجوار الصورة
+    const SHRINK = 0.08;
+    const rawX = Math.round(bbox.x);
+    const rawY = Math.round(bbox.y);
+    const rawW = Math.round(bbox.w);
+    const rawH = Math.round(bbox.h);
+    const dx = Math.round(rawW * SHRINK);
+    const dy = Math.round(rawH * SHRINK);
+    const x = Math.max(0, rawX + dx);
+    const y = Math.max(0, rawY + dy);
+    const w = Math.max(20, Math.min(imgMeta.imageWidth - x, rawW - 2 * dx));
+    const h = Math.max(20, Math.min(imgMeta.imageHeight - y, rawH - 2 * dy));
     // 🛡️ طبقة 2: قيود الحجم — لا صغير جداً ولا طويل جداً
     if (w < 80 || h < 80) { console.warn(`[crop:too-small] "${item.name}"`); continue; }
     const aspect = w / h;

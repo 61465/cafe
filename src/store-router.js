@@ -1586,6 +1586,107 @@ router.get("/store/notifications", auth, (req, res) => {
 });
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
+// ═════ 🎫 Support Tickets (store side) ═══════════════════════════════════
+router.post("/store/support/tickets", auth, (req, res) => {
+  const t = require("./support-tickets");
+  const { subject, body, priority, category } = req.body || {};
+  if (!subject || !body) return res.status(400).json({ error: "العنوان والوصف مطلوبان" });
+  const ticket = t.createTicket(req.storeId, { subject, body, priority, category });
+  audit({ actor: { type: "store", id: req.storeId }, action: "support.create_ticket", target: { type: "ticket", id: ticket.id } }, req);
+  res.json({ ok: true, ticket });
+});
+router.get("/store/support/tickets", auth, (req, res) => {
+  const t = require("./support-tickets");
+  res.json({ items: t.listForStore(req.storeId, { status: req.query.status }) });
+});
+router.get("/store/support/tickets/:id", auth, (req, res) => {
+  const t = require("./support-tickets").getTicket(req.params.id);
+  if (!t || t.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
+  res.json({ ticket: t });
+});
+router.post("/store/support/tickets/:id/reply", auth, (req, res) => {
+  const tk = require("./support-tickets");
+  const existing = tk.getTicket(req.params.id);
+  if (!existing || existing.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
+  const updated = tk.replyToTicket(req.params.id, { from: "store", message: req.body?.message });
+  audit({ actor: { type: "store", id: req.storeId }, action: "support.reply", target: { type: "ticket", id: req.params.id } }, req);
+  res.json({ ok: true, ticket: updated });
+});
+
+// ═════ 🔔 Notifications Inbox ═════════════════════════════════════════════
+router.get("/store/notifications/inbox", auth, (req, res) => {
+  const notif = require("./notifications");
+  const unreadOnly = req.query.unread === "1";
+  const items = notif.listForStore(req.storeId, { unreadOnly });
+  res.json({ items, unreadCount: notif.unreadCount(req.storeId) });
+});
+router.get("/store/notifications/unread-count", auth, (req, res) => {
+  res.json({ count: require("./notifications").unreadCount(req.storeId) });
+});
+router.post("/store/notifications/:id/read", auth, (req, res) => {
+  const id = String(req.params.id || "").slice(0, 100);
+  require("./notifications").markRead(req.storeId, id);
+  res.json({ ok: true });
+});
+router.post("/store/notifications/read-all", auth, (req, res) => {
+  const n = require("./notifications").markAllRead(req.storeId);
+  res.json({ ok: true, marked: n });
+});
+
+// 📤 GET /store/orders/export.csv — تصدير CSV للطلبات
+router.get("/store/orders/export.csv", auth, (req, res) => {
+  const orders = readOrders(req.storeId).filter(o => !o._test);
+  const from = req.query.from || "";
+  const to   = req.query.to   || "";
+  const status = req.query.status && req.query.status !== "all" ? req.query.status : null;
+  const filtered = orders.filter(o => {
+    const d = (o.timestamp || "").slice(0, 10);
+    if (from && d < from) return false;
+    if (to   && d > to)   return false;
+    if (status && o.status !== status) return false;
+    return true;
+  });
+  const maskPhone = (p) => {
+    const s = String(p || "").replace(/\D/g, "");
+    return s.length >= 4 ? s.slice(0, -4) + "****" : s;
+  };
+  const escapeCsv = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v).replace(/"/g, '""');
+    return /[",\n]/.test(s) ? `"${s}"` : s;
+  };
+  const headers = [
+    "رقم الطلب","التاريخ","الوقت","العميل","رقم العميل (مخفي جزئياً)","العنوان",
+    "المنتجات","المجموع","رسوم التوصيل","الخصم","الإجمالي","العملة",
+    "الحالة","الوقت المطلوب","المدة المتوقعة (د)","ملاحظات","إجابات الأسئلة","سبب الرفض"
+  ];
+  const rows = filtered.map(o => [
+    o.orderId || "",
+    (o.timestamp || "").slice(0, 10),
+    (o.timestamp || "").slice(11, 16),
+    o.customerName || "",
+    maskPhone(o.customerPhone),
+    (o.customerLocationName || o.customerLocation || "").replace(/\(📍\s*https?:\/\/[^\)]+\)/g, "").trim(),
+    (o.items || []).map(i => `${i.name}×${i.qty}`).join("؛ "),
+    o.subtotal || 0,
+    o.deliveryFee || 0,
+    o.discount || 0,
+    o.total || 0,
+    o.currency || "ر.س",
+    o.status || "",
+    o.scheduledTime || "",
+    o.estimatedMinutes || "",
+    o.notes || o.orderNotes || "",
+    o.customAnswers ? JSON.stringify(o.customAnswers) : "",
+    o.rejectReason || o.cancelReason || "",
+  ]);
+  const csv = "﻿" + [headers, ...rows].map(r => r.map(escapeCsv).join(",")).join("\n");
+  const today = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="orders-${req.storeId}-${today}.csv"`);
+  res.send(csv);
+});
+
 router.get("/store/orders", auth, (req, res) => {
   const orders = readOrders(req.storeId);
   orders.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));

@@ -755,6 +755,10 @@ tr:hover td{background:#fafcfa}
       <span id="navStoreName">متجري</span>
     </div>
     <div class="navbar-right">
+      <button onclick="showTab('inbox')" title="الإشعارات" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;cursor:pointer;font-size:18px;position:relative;display:inline-flex;align-items:center;justify-content:center">
+        🔔
+        <span id="navBellBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:#dc2626;color:#fff;border-radius:999px;min-width:18px;height:18px;padding:0 4px;font-size:10px;font-weight:900;display:none;align-items:center;justify-content:center">0</span>
+      </button>
       <div class="store-badge" id="navPhone"></div>
       <span id="bizTypeBadge" style="padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;background:#f3f4f6;color:#374151;border:1px solid #d1d5db"></span>
       <span id="planBadge" style="padding:4px 10px;border-radius:20px;font-size:12px;color:#fff;font-weight:600;background:#6b7280">🌱 الأساسية</span>
@@ -771,6 +775,8 @@ tr:hover td{background:#fafcfa}
     <button class="tab active" id="tabDash"     onclick="showTab('dash')">📊 لوحة التحكم</button>
     <button class="tab"        id="tabMenu"     onclick="showTab('menu')"><span data-biz="catalog">📋 القائمة</span></button>
     <button class="tab"        id="tabOrders"   onclick="showTab('orders')"><span data-biz="orderInbox">📦 الطلبات</span></button>
+    <button class="tab"        id="tabInbox"    onclick="showTab('inbox')">🔔 الإشعارات <span id="inboxBadge" style="display:none;background:#dc2626;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:900;margin-right:5px">0</span></button>
+    <button class="tab"        id="tabTickets"  onclick="showTab('tickets')">🎫 تذاكري</button>
     <button class="tab"        id="tabSupport"  onclick="showTab('support')">🆘 الدعم <span id="supportBadge" style="display:none;background:#dc2626;color:#fff;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:900;margin-right:5px">0</span></button>
     <button class="tab"        id="tabBotQ"     onclick="showTab('botq')">🤖 أسئلة البوت</button>
     <button class="tab"        id="tabSettings"  onclick="showTab('settings')">⚙️ إعدادات المتجر</button>
@@ -885,6 +891,7 @@ tr:hover td{background:#fafcfa}
           <div class="card-title"><span data-biz="orderInbox">📦 الطلبات الواردة</span></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" onclick="createTestOrder()" title="ينشئ طلب اختباري لتجربة tab الطلبات">🧪 طلب اختبار</button>
+            <button class="btn btn-outline btn-sm" onclick="openExportOrdersModal()">📤 تصدير CSV</button>
             <button class="btn btn-outline btn-sm" onclick="loadOrders()">🔄 تحديث</button>
           </div>
         </div>
@@ -1362,6 +1369,81 @@ tr:hover td{background:#fafcfa}
   </div>
 </div>
 
+    <!-- ── 🔔 صندوق الإشعارات ── -->
+    <section id="inboxSection" style="display:none">
+      <div style="background:linear-gradient(135deg,#eff6ff 0%,#fff 100%);border:1px solid #bfdbfe;border-radius:14px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#1e3a8a">🔔 صندوق الإشعارات</h2>
+          <p style="color:#3730a3;font-size:13px;margin:6px 0 0">كل أحداث متجرك في مكان واحد — تجديد، تقييم سلبي، طلبات معلّقة، نفاد المخزون...</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="inboxMarkAllRead()" style="background:#fff;border:1px solid #bfdbfe;color:#1e40af;padding:8px 14px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit;font-size:13px">✓ علّم الكل مقروء</button>
+          <button onclick="loadInbox()" style="background:#fff;border:1px solid #bfdbfe;color:#1e40af;padding:8px 14px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit;font-size:13px">🔄 تحديث</button>
+        </div>
+      </div>
+      <div id="inboxList">
+        <div style="text-align:center;padding:40px;color:#9ca3af">⏳ جاري التحميل...</div>
+      </div>
+    </section>
+
+    <!-- ── 🎫 تذاكر الدعم (متجر → ماستر) ── -->
+    <section id="ticketsSection" style="display:none">
+      <div style="background:linear-gradient(135deg,#fef3c7 0%,#fff 100%);border:1px solid #fcd34d;border-radius:14px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <h2 style="margin:0;font-size:20px;font-weight:900;color:#78350f">🎫 تذاكر الدعم</h2>
+          <p style="color:#92400e;font-size:13px;margin:6px 0 0">تواصل مع فريق الدعم — كل تذكرة محفوظة في سجل المراسلات</p>
+        </div>
+        <button onclick="openNewTicketModal()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px;box-shadow:0 3px 10px rgba(245,158,11,.3)">➕ تذكرة جديدة</button>
+      </div>
+      <div id="ticketsList"><div style="text-align:center;padding:40px;color:#9ca3af">⏳ جاري التحميل...</div></div>
+    </section>
+
+    <!-- New Ticket Modal -->
+    <div id="newTicketModal" onclick="if(event.target===this)closeNewTicketModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto">
+      <div style="background:#fff;border-radius:14px;max-width:520px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);margin-top:30px;overflow:hidden">
+        <div style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;padding:16px 22px">
+          <div style="font-size:17px;font-weight:900">🎫 فتح تذكرة دعم</div>
+          <div style="font-size:12px;opacity:.9;margin-top:3px">سنرد عليك في أقرب وقت</div>
+        </div>
+        <div style="padding:18px 22px">
+          <label style="font-size:13px;font-weight:700;color:#374151">العنوان *</label>
+          <input id="tkSubject" type="text" maxlength="200" placeholder="باختصار: ما الموضوع؟" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin:6px 0 12px">
+          <div style="display:flex;gap:10px;margin-bottom:12px">
+            <div style="flex:1">
+              <label style="font-size:13px;font-weight:700;color:#374151">الفئة</label>
+              <select id="tkCategory" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin-top:6px">
+                <option value="general">عام</option>
+                <option value="technical">تقني</option>
+                <option value="billing">فواتير/اشتراك</option>
+                <option value="bug">خلل في النظام</option>
+                <option value="feature_request">طلب ميزة</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:13px;font-weight:700;color:#374151">الأولوية</label>
+              <select id="tkPriority" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin-top:6px">
+                <option value="low">منخفضة</option>
+                <option value="medium" selected>عادية</option>
+                <option value="high">عاجلة</option>
+                <option value="urgent">حرجة جداً</option>
+              </select>
+            </div>
+          </div>
+          <label style="font-size:13px;font-weight:700;color:#374151">التفاصيل *</label>
+          <textarea id="tkBody" rows="6" maxlength="4000" placeholder="اشرح المشكلة أو السؤال بالتفصيل..." style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin-top:6px;resize:vertical"></textarea>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button onclick="closeNewTicketModal()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:11px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
+            <button onclick="submitNewTicket()" style="flex:2;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:11px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit">📤 إرسال</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ticket Thread Modal -->
+    <div id="ticketThreadModal" onclick="if(event.target===this)closeTicketThread()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto">
+      <div id="ticketThreadBody" style="background:#fff;border-radius:14px;max-width:620px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);margin-top:30px;overflow:hidden"></div>
+    </div>
+
     <!-- ── 🆘 الدعم: عملاء طلبوا مسؤول والبوت متوقف معهم ── -->
     <section id="supportSection" style="display:none">
       <div style="background:linear-gradient(135deg,#fef2f2 0%,#fff 100%);border:1px solid #fecaca;border-radius:14px;padding:18px 22px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
@@ -1412,6 +1494,38 @@ tr:hover td{background:#fafcfa}
         <div id="botqPreview" style="padding:14px;background:#f0f9ff;border-radius:8px;margin:8px 14px 16px;font-family:'Segoe UI';font-size:14px;color:#0c4a6e;line-height:1.9;white-space:pre-wrap"></div>
       </div>
     </section>
+
+    <!-- 📤 Export Orders Modal -->
+    <div id="exportOrdersModal" onclick="if(event.target===this)closeExportOrdersModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:center;justify-content:center;padding:18px">
+      <div style="background:#fff;border-radius:14px;max-width:440px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;padding:16px 20px">
+          <div style="font-size:17px;font-weight:900">📤 تصدير الطلبات CSV</div>
+          <div style="font-size:12px;opacity:.9;margin-top:3px">حدّد الفترة والحالة</div>
+        </div>
+        <div style="padding:18px 20px">
+          <label style="display:block;font-size:13px;font-weight:700;color:#374151;margin-bottom:6px">من تاريخ</label>
+          <input id="expFrom" type="date" style="width:100%;padding:9px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:700;color:#374151;margin-bottom:6px">إلى تاريخ</label>
+          <input id="expTo" type="date" style="width:100%;padding:9px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;margin-bottom:12px">
+          <label style="display:block;font-size:13px;font-weight:700;color:#374151;margin-bottom:6px">الحالة</label>
+          <select id="expStatus" style="width:100%;padding:9px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;font-weight:700">
+            <option value="all">كل الحالات</option>
+            <option value="pending_confirmation">⏳ بانتظار التأكيد</option>
+            <option value="confirmed">✅ مؤكد</option>
+            <option value="completed">🏁 مكتمل</option>
+            <option value="rejected">❌ مرفوض</option>
+            <option value="cancelled">🚫 ملغي</option>
+          </select>
+          <div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-top:12px;font-size:11px;color:#1e40af;line-height:1.6">
+            💡 اتركه فارغ = كل الفترة. الـ CSV يفتح في Excel/Google Sheets مباشرة.
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onclick="closeExportOrdersModal()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:11px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
+            <button onclick="doExportOrders()" style="flex:2;background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;border:none;padding:11px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit">📥 تنزيل</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- 📦 Move Product to Category Modal -->
     <div id="moveProductModal" onclick="if(event.target===this)closeMoveProduct()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:center;justify-content:center;padding:18px">
@@ -2349,6 +2463,9 @@ async function _finishLogin(r) {
   // Support polling — يحدّث الـ badge + banner كل 15 ث
   supportPoll();
   if (!_supportTimer) _supportTimer = setInterval(supportPoll, 15000);
+  // 🔔 Inbox polling
+  inboxPoll();
+  if (!_inboxPollTimer) _inboxPollTimer = setInterval(inboxPoll, 30000);
 }
 
 async function doLogin() {
@@ -2486,7 +2603,7 @@ function toggleDeliveryFeeS() {
 }
 
 function showTab(tab) {
-  ["dash","menu","orders","support","botq","settings","customers","broadcast","loyalty","whatsapp","archive","accounting","rejections","inventory","ratings"].forEach(t => {
+  ["dash","menu","orders","inbox","tickets","support","botq","settings","customers","broadcast","loyalty","whatsapp","archive","accounting","rejections","inventory","ratings"].forEach(t => {
     const sec = document.getElementById(t + "Section");
     const btn = document.getElementById("tab" + t.charAt(0).toUpperCase() + t.slice(1));
     if (sec) sec.style.display = t === tab ? "" : "none";
@@ -2494,6 +2611,8 @@ function showTab(tab) {
   });
   if (tab === "menu")      loadProducts();
   if (tab === "orders")    loadOrders();
+  if (tab === "inbox")     loadInbox();
+  if (tab === "tickets")   loadTickets();
   if (tab === "support")   supportLoad();
   if (tab === "botq")      botqLoad();
   if (tab === "settings")  loadSettings();
@@ -4581,6 +4700,255 @@ async function botqLoad() {
 
 let _botqWelcome = "";
 let _botqThankYou = "";
+
+// ═════════════ 🎫 Support Tickets (store) ═════════════
+const TK_STATUS = {
+  open:        { label: "مفتوحة", color: "#dc2626", bg: "#fef2f2", icon: "🔴" },
+  in_progress: { label: "قيد المعالجة", color: "#f59e0b", bg: "#fffbeb", icon: "🟡" },
+  resolved:    { label: "محلولة", color: "#16a34a", bg: "#f0fdf4", icon: "✅" },
+  closed:      { label: "مغلقة", color: "#6b7280", bg: "#f9fafb", icon: "⚫" },
+};
+const TK_PRIO = {
+  urgent: { label: "حرجة", color: "#dc2626" },
+  high:   { label: "عاجلة", color: "#f59e0b" },
+  medium: { label: "عادية", color: "#3b82f6" },
+  low:    { label: "منخفضة", color: "#6b7280" },
+};
+
+async function loadTickets() {
+  const box = document.getElementById("ticketsList");
+  if (!box) return;
+  try {
+    const r = await api("GET", "/store/support/tickets");
+    const list = r.items || [];
+    if (!list.length) {
+      box.innerHTML = `<div style="background:#fffbeb;border:1px dashed #fcd34d;border-radius:14px;padding:50px;text-align:center">
+        <div style="font-size:48px;margin-bottom:10px">🎫</div>
+        <h3 style="color:#78350f;margin:0 0 6px;font-size:17px">لا توجد تذاكر</h3>
+        <p style="color:#92400e;font-size:13px;margin:0">اضغط "تذكرة جديدة" لفتح أول تذكرة</p>
+      </div>`;
+      return;
+    }
+    box.innerHTML = list.map(t => {
+      const s = TK_STATUS[t.status] || TK_STATUS.open;
+      const p = TK_PRIO[t.priority] || TK_PRIO.medium;
+      return `<div onclick="openTicketThread('${esc(t.id)}')" style="background:#fff;border:1px solid #e5e7eb;border-right:5px solid ${s.color};border-radius:11px;padding:13px 16px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:12px">
+        <span style="font-size:22px">${s.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;color:#111827;font-size:14.5px">${esc(t.subject)}</div>
+          <div style="font-size:11.5px;color:#6b7280;margin-top:3px">
+            <span style="color:${s.color};font-weight:700">${s.label}</span> ·
+            <span style="color:${p.color};font-weight:700">${p.label}</span> ·
+            ${_tkAgo(t.updatedAt)}
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+  } catch (e) { box.innerHTML = `<div style="text-align:center;color:#dc2626;padding:30px">فشل: ${esc(e.message||'')}</div>`; }
+}
+
+function _tkAgo(iso) {
+  if (!iso) return "—";
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 60) return `منذ ${m} د`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `منذ ${h} س`;
+  return `منذ ${Math.floor(h / 24)} يوم`;
+}
+
+function openNewTicketModal() {
+  document.getElementById("tkSubject").value = "";
+  document.getElementById("tkBody").value = "";
+  document.getElementById("tkCategory").value = "general";
+  document.getElementById("tkPriority").value = "medium";
+  document.getElementById("newTicketModal").style.display = "flex";
+}
+function closeNewTicketModal() { document.getElementById("newTicketModal").style.display = "none"; }
+
+async function submitNewTicket() {
+  const subject = document.getElementById("tkSubject").value.trim();
+  const body = document.getElementById("tkBody").value.trim();
+  const category = document.getElementById("tkCategory").value;
+  const priority = document.getElementById("tkPriority").value;
+  if (!subject || !body) { showToast("املأ العنوان والوصف", "error"); return; }
+  try {
+    await api("POST", "/store/support/tickets", { subject, body, category, priority });
+    showToast("✅ التذكرة مفتوحة، سنرد قريباً", "success");
+    closeNewTicketModal();
+    loadTickets();
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
+}
+
+async function openTicketThread(id) {
+  try {
+    const r = await api("GET", `/store/support/tickets/${id}`);
+    const t = r.ticket;
+    const s = TK_STATUS[t.status] || TK_STATUS.open;
+    const body = document.getElementById("ticketThreadBody");
+    body.innerHTML = `
+      <div style="background:linear-gradient(135deg,${s.color}1a,#fff);padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="min-width:0;flex:1">
+          <div style="font-size:11px;color:${s.color};font-weight:800">${s.icon} ${s.label}</div>
+          <div style="font-size:16px;font-weight:900;color:#111827;margin-top:3px">${esc(t.subject)}</div>
+        </div>
+        <button onclick="closeTicketThread()" style="background:#f3f4f6;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+      </div>
+      <div style="padding:14px 20px;max-height:55vh;overflow-y:auto">
+        ${(t.messages||[]).map(m => `<div style="background:${m.from==='master'?'#eff6ff':'#f9fafb'};border-right:3px solid ${m.from==='master'?'#3b82f6':'#9ca3af'};border-radius:10px;padding:10px 14px;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:800;color:${m.from==='master'?'#1e40af':'#374151'};margin-bottom:5px">${m.from==='master'?'🛠️ فريق الدعم':'👤 أنت'} · ${_tkAgo(m.ts)}</div>
+          <div style="font-size:13.5px;line-height:1.7;color:#111827;white-space:pre-wrap;word-break:break-word">${esc(m.body)}</div>
+        </div>`).join("")}
+      </div>
+      ${t.status !== 'closed' ? `<div style="padding:14px 20px;border-top:1px solid #e5e7eb;background:#fafbfc">
+        <textarea id="tkReplyBox" rows="3" placeholder="ردك..." style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-family:inherit;resize:vertical"></textarea>
+        <button onclick="sendTicketReply('${esc(t.id)}')" style="width:100%;background:#1b5e20;color:#fff;border:none;padding:11px;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:8px">📤 إرسال الرد</button>
+      </div>` : `<div style="padding:14px 20px;text-align:center;color:#6b7280;font-size:12px;background:#f9fafb">التذكرة مغلقة — لا يمكن إرسال ردود جديدة</div>`}`;
+    document.getElementById("ticketThreadModal").style.display = "flex";
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
+}
+function closeTicketThread() { document.getElementById("ticketThreadModal").style.display = "none"; }
+
+async function sendTicketReply(id) {
+  const box = document.getElementById("tkReplyBox");
+  const msg = box?.value?.trim();
+  if (!msg) { showToast("اكتب رداً", "error"); return; }
+  try {
+    await api("POST", `/store/support/tickets/${id}/reply`, { message: msg });
+    showToast("✅ أُرسل الرد", "success");
+    openTicketThread(id);
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
+}
+
+// ═════════════ 🔔 Inbox Notifications ═════════════
+let _inboxPollTimer = null;
+async function inboxPoll() {
+  try {
+    const r = await api("GET", "/store/notifications/unread-count");
+    const badge = document.getElementById("navBellBadge");
+    const tabBadge = document.getElementById("inboxBadge");
+    const n = r.count || 0;
+    if (n > 0) {
+      if (badge) { badge.style.display = "inline-flex"; badge.textContent = n; }
+      if (tabBadge) { tabBadge.style.display = ""; tabBadge.textContent = n; }
+    } else {
+      if (badge) badge.style.display = "none";
+      if (tabBadge) tabBadge.style.display = "none";
+    }
+  } catch {}
+}
+async function loadInbox() {
+  const box = document.getElementById("inboxList");
+  if (!box) return;
+  box.innerHTML = `<div style="text-align:center;padding:40px;color:#9ca3af">⏳ جاري التحميل...</div>`;
+  try {
+    const r = await api("GET", "/store/notifications/inbox");
+    const list = r.items || [];
+    if (!list.length) {
+      box.innerHTML = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:50px;text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">✨</div>
+        <h3 style="color:#166534;margin:0 0 6px;font-size:18px">لا إشعارات</h3>
+        <p style="color:#16a34a;font-size:14px;margin:0">كل شيء تحت السيطرة!</p>
+      </div>`;
+      return;
+    }
+    // مجموعات: اليوم / هذا الأسبوع / أقدم
+    const today = new Date(); today.setHours(0,0,0,0);
+    const weekAgo = new Date(today); weekAgo.setDate(today.getDate() - 7);
+    const groups = { today: [], week: [], older: [] };
+    for (const n of list) {
+      const t = new Date(n.ts || 0);
+      if (t >= today) groups.today.push(n);
+      else if (t >= weekAgo) groups.week.push(n);
+      else groups.older.push(n);
+    }
+    const colors = {
+      critical: { bg: "#fef2f2", border: "#fecaca", text: "#7f1d1d" },
+      warning:  { bg: "#fffbeb", border: "#fcd34d", text: "#78350f" },
+      info:     { bg: "#eff6ff", border: "#bfdbfe", text: "#1e40af" },
+    };
+    const renderGroup = (title, items) => {
+      if (!items.length) return "";
+      return `<div style="margin-bottom:14px">
+        <div style="font-weight:800;color:#6b7280;font-size:12px;margin-bottom:6px;padding-right:4px">${title} · ${items.length}</div>
+        ${items.map(n => {
+          const c = colors[n.severity] || colors.info;
+          const timeAgo = _inboxTimeAgo(n.ts);
+          return `<div onclick="inboxOpen('${esc(n.id)}','${esc(n.link||'dash')}')" style="background:${n.read?'#fff':c.bg};border:1px solid ${n.read?'#e5e7eb':c.border};border-right:5px solid ${c.border};border-radius:10px;padding:11px 14px;margin-bottom:6px;cursor:pointer;display:flex;align-items:center;gap:12px;${n.read?'opacity:.65':''}">
+            <span style="font-size:22px">${n.icon||'•'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:800;font-size:14px;color:${c.text}">${esc(n.title)}</div>
+              <div style="font-size:12px;color:#6b7280;margin-top:2px">${esc(n.body)}</div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:3px">${timeAgo}</div>
+            </div>
+            ${!n.read?'<span style="background:#dc2626;width:8px;height:8px;border-radius:50%;flex-shrink:0"></span>':''}
+          </div>`;
+        }).join("")}
+      </div>`;
+    };
+    box.innerHTML = renderGroup("📅 اليوم", groups.today) + renderGroup("📆 هذا الأسبوع", groups.week) + renderGroup("📜 أقدم", groups.older);
+  } catch (e) {
+    box.innerHTML = `<div style="text-align:center;padding:40px;color:#dc2626">فشل: ${esc(e.message||'')}</div>`;
+  }
+}
+function _inboxTimeAgo(iso) {
+  if (!iso) return "—";
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return "الآن";
+  if (m < 60) return `منذ ${m} د`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `منذ ${h} س`;
+  return `منذ ${Math.floor(h / 24)} يوم`;
+}
+async function inboxOpen(notifId, link) {
+  try { await api("POST", `/store/notifications/${notifId}/read`); } catch {}
+  if (link) showTab(link);
+  setTimeout(() => { loadInbox(); inboxPoll(); }, 300);
+}
+async function inboxMarkAllRead() {
+  try {
+    await api("POST", "/store/notifications/read-all");
+    showToast("✅ تم تعليم الكل مقروء", "success");
+    loadInbox(); inboxPoll();
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
+}
+
+// ═════════════ 📤 Export Orders CSV ═════════════
+function openExportOrdersModal() {
+  document.getElementById("expFrom").value = "";
+  document.getElementById("expTo").value = "";
+  document.getElementById("expStatus").value = "all";
+  document.getElementById("exportOrdersModal").style.display = "flex";
+}
+function closeExportOrdersModal() {
+  document.getElementById("exportOrdersModal").style.display = "none";
+}
+async function doExportOrders() {
+  const from = document.getElementById("expFrom").value;
+  const to   = document.getElementById("expTo").value;
+  const status = document.getElementById("expStatus").value;
+  const qs = new URLSearchParams();
+  if (from) qs.set("from", from);
+  if (to) qs.set("to", to);
+  if (status) qs.set("status", status);
+  const tok = localStorage.getItem("store_token");
+  try {
+    const r = await fetch("/store/orders/export.csv?" + qs.toString(), {
+      headers: { "x-store-token": tok },
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    closeExportOrdersModal();
+    showToast("✅ تم تنزيل CSV", "success");
+  } catch (e) {
+    showToast("فشل: " + e.message, "error");
+  }
+}
 
 // ═════════════ 📦 Move Product to Category ═════════════
 let _moveProductId = null;

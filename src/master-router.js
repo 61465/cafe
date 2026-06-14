@@ -663,6 +663,58 @@ router.get("/master/financial", auth, (_req, res) => {
 });
 
 // ─── Plans list ───────────────────────────────────────────────────────────────
+// ═════ 🎫 Support Tickets (master side) + 📈 Analytics ═══════════════════
+router.get("/master/support/tickets", auth, (req, res) => {
+  const t = require("./support-tickets");
+  res.json({
+    items: t.listAll({ status: req.query.status, priority: req.query.priority, storeId: req.query.storeId }),
+  });
+});
+router.get("/master/support/tickets/stats", auth, (_req, res) => {
+  res.json(require("./support-tickets").getStats());
+});
+router.get("/master/support/tickets/:id", auth, (req, res) => {
+  const t = require("./support-tickets").getTicket(req.params.id);
+  if (!t) return res.status(404).json({ error: "غير موجود" });
+  res.json({ ticket: t });
+});
+router.post("/master/support/tickets/:id/reply", auth, (req, res) => {
+  const tk = require("./support-tickets");
+  const updated = tk.replyToTicket(req.params.id, { from: "master", message: req.body?.message });
+  if (!updated) return res.status(404).json({ error: "غير موجود" });
+  audit({ actor: { type: "master", id: "master" }, action: "support.reply", target: { type: "ticket", id: req.params.id } }, req);
+  // أبلغ المتجر عبر واتساب (إن أمكن)
+  try {
+    const stores = readStores().stores;
+    const store = stores.find(s => s.id === updated.storeId);
+    if (store?.ownerPhone) {
+      const waMgr = require("./whatsapp-manager");
+      const jid = String(store.ownerPhone).replace(/\D/g, "") + "@s.whatsapp.net";
+      waMgr.sendMessage(updated.storeId, jid,
+        `📩 *رد جديد على تذكرة دعمك*\n\n` +
+        `العنوان: ${updated.subject}\n\n` +
+        `الرد: ${String(req.body?.message || "").slice(0, 400)}\n\n` +
+        `افتح لوحة التحكم → 🎫 تذاكري للمتابعة.`
+      ).catch(() => {});
+    }
+  } catch {}
+  res.json({ ok: true, ticket: updated });
+});
+router.post("/master/support/tickets/:id/status", auth, (req, res) => {
+  try {
+    const updated = require("./support-tickets").updateStatus(req.params.id, req.body?.status);
+    if (!updated) return res.status(404).json({ error: "غير موجود" });
+    audit({ actor: { type: "master", id: "master" }, action: "support.status", target: { type: "ticket", id: req.params.id }, meta: { status: req.body?.status } }, req);
+    res.json({ ok: true, ticket: updated });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// 📈 Growth analytics
+router.get("/master/analytics/growth", auth, (req, res) => {
+  const months = Math.min(24, Math.max(3, parseInt(req.query.months) || 12));
+  res.json(require("./analytics").getGrowthAnalytics(months));
+});
+
 router.get("/master/plans", auth, (_req, res) => {
   res.json({ plans: Object.values(PLANS).map(p => ({
     id: p.id, nameAr: p.nameAr, emoji: p.emoji, color: p.color, features: p.features
