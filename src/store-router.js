@@ -894,24 +894,62 @@ const SETTING_VALIDATORS = {
   avgDeliveryMin:     v => { if (v === null || v === "" || v === undefined) return null; const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 && n <= 300 ? n : null; },
 };
 
+// ترجمة أسماء الحقول لـ user-friendly في الـ warnings
+const FIELD_LABELS_AR = {
+  storeName: "اسم المتجر", currency: "العملة", deliveryFee: "رسوم التوصيل",
+  workingHoursStart: "وقت الفتح", workingHoursEnd: "وقت الإقفال",
+  welcomeMessage: "رسالة الترحيب", thankYouMessage: "رسالة الشكر",
+  apologyMessage: "رسالة الاعتذار",
+  invoiceColor: "لون الفاتورة", themeAccent: "لون التمييز",
+  themeText: "لون النص", themeTextMute: "لون النص الثانوي",
+  menuMode: "وضع القائمة", invoiceTemplate: "قالب الفاتورة",
+  businessType: "نوع النشاط", invoiceLogoUrl: "شعار الفاتورة",
+  logoUrl: "شعار المتجر", address: "العنوان", locationMapUrl: "رابط الخريطة",
+  requireConfirmation: "تأكيد الطلب", enableWebview: "تفعيل الويب",
+  enableNumeric: "تفعيل الأرقام", enableAI: "تفعيل الذكاء",
+  enableCoupons: "تفعيل الكوبونات", avgDeliveryMin: "وقت التوصيل المتوقع",
+};
+
+// Best-effort save: نحفظ الصالح، نُبلغ بالفاشل فقط (بدل رفض الكل)
 router.put("/store/settings", auth, (req, res) => {
   const updates = {};
-  const errors = [];
+  const failed  = [];   // [{ field, label, reason }]
+  const saved   = [];   // أسماء الحقول التي حُفظت
   for (const [key, validator] of Object.entries(SETTING_VALIDATORS)) {
     if (req.body[key] === undefined) continue;
-    const cleaned = validator(req.body[key]);
+    let cleaned;
+    try { cleaned = validator(req.body[key]); }
+    catch (e) { cleaned = null; }
     if (cleaned === null) {
-      errors.push(key);
+      failed.push({ field: key, label: FIELD_LABELS_AR[key] || key, value: req.body[key] });
     } else {
       updates[key] = cleaned;
+      saved.push(key);
     }
   }
-  if (errors.length) {
-    return res.status(400).json({ error: "قيم غير صحيحة في: " + errors.join(", ") });
+  // احفظ المقبول حتى لو هناك فاشل
+  let updated = null;
+  if (Object.keys(updates).length) {
+    updated = updateStore(req.storeId, updates);
+    if (!updated) return res.status(404).json({ error: "المتجر غير موجود" });
   }
-  const updated = updateStore(req.storeId, updates);
-  if (!updated) return res.status(404).json({ error: "المتجر غير موجود" });
-  res.json({ ok: true });
+  // إن لم يُحفظ شيء وكل الحقول فشلت → 400
+  if (!saved.length && failed.length) {
+    return res.status(400).json({
+      ok: false,
+      error: "لم يُحفظ أي حقل — كل القيم غير صالحة",
+      failed,
+      savedCount: 0,
+    });
+  }
+  // نجاح كامل أو جزئي
+  res.json({
+    ok: true,
+    savedCount: saved.length,
+    saved,
+    failed,
+    partial: failed.length > 0,
+  });
 });
 
 // ─── Products ─────────────────────────────────────────────────────────────────

@@ -915,10 +915,10 @@ tr:hover td{background:#fafcfa}
     <section id="settingsSection" style="display:none">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">⚙️ إعدادات المتجر</div>
+          <div class="card-title">⚙️ إعدادات المتجر <span style="font-size:11px;color:#16a34a;font-weight:600;margin-right:8px">✓ حفظ تلقائي</span></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline" onclick="resetAllSessions()" title="يُجبر كل العملاء على استقبال الترحيب من جديد عند رسالتهم القادمة" style="font-size:13px">🔄 إعادة جلسات العملاء</button>
-            <button class="btn btn-primary" onclick="saveSettings()">💾 حفظ التغييرات</button>
+            <button class="btn btn-outline" onclick="saveSettings()" title="حفظ يدوي لكل الحقول معاً (الحفظ التلقائي يعمل أيضاً)" style="font-size:13px">💾 حفظ الكل</button>
           </div>
         </div>
 
@@ -2768,6 +2768,113 @@ function applyBusinessLabels() {
 // ─── Navigation ─────────────────────────────────────────────────────────────
 function toggleDeliveryFeeS() {
   applyBusinessLabels();
+}
+
+// ═════════════ Auto-save: كل حقل يُحفظ منفرداً عند تغيّره ═════════════
+// debounce timers لكل حقل
+const _autoSaveTimers = {};
+const _AUTOSAVE_DEBOUNCE = 600; // ms للحقول النصية
+const _AUTOSAVE_INSTANT  = ["checkbox","select-one","color"]; // فوري لهذه
+
+function _serializeFieldValue(el, kind) {
+  if (el.type === "checkbox") return el.checked;
+  if (kind === "number")     return el.value === "" ? null : parseFloat(el.value);
+  if (kind === "int")        return el.value === "" ? null : parseInt(el.value, 10);
+  return el.value;
+}
+
+async function _autoSaveSingleField(fieldName, value, label) {
+  try {
+    const res = await api("PUT", "/store/settings", { [fieldName]: value });
+    if (res.partial && res.failed?.length) {
+      showToast(`⚠️ لم يُحفظ "${label || fieldName}"`, "warn");
+      return false;
+    }
+    // نجاح صامت — toast صغير في الزاوية
+    showToast(`✓ حُفظ ${label || fieldName}`, "success");
+    // sync الـ STORE_NAME locally لو تغيّر
+    if (fieldName === "storeName") {
+      STORE_NAME = value;
+      localStorage.setItem("store_name", value);
+      const navEl = document.getElementById("navStoreName");
+      if (navEl) navEl.textContent = value;
+    }
+    if (fieldName === "currency") localStorage.setItem("store_currency", value);
+    // ألوان: طبّق فوراً
+    if (["themeAccent","themeText","themeTextMute","invoiceColor"].includes(fieldName)) {
+      applyStoreColor?.();
+    }
+    return true;
+  } catch (e) {
+    const msg = e?.failed?.[0]?.label || e?.error || "غير صالح";
+    showToast(`❌ ${label || fieldName}: ${msg}`, "error");
+    return false;
+  }
+}
+
+/**
+ * يربط حقل ↔ /store/settings auto-save.
+ * @param {string} elementId — id الـ input/select/textarea
+ * @param {string} fieldName — اسم الحقل في الـ API
+ * @param {object} opts — { kind?: "text"|"number"|"int", label?: string, transform?: (v)=>v }
+ */
+function wireAutoSave(elementId, fieldName, opts = {}) {
+  const el = document.getElementById(elementId);
+  if (!el || el.dataset.autosaveBound === "1") return;
+  el.dataset.autosaveBound = "1";
+  const label = opts.label || fieldName;
+  const kind  = opts.kind  || "text";
+  const isInstant = _AUTOSAVE_INSTANT.includes(el.type);
+  const eventName = isInstant ? "change" : "input";
+  el.addEventListener(eventName, () => {
+    let value = _serializeFieldValue(el, kind);
+    if (typeof opts.transform === "function") value = opts.transform(value);
+    if (_autoSaveTimers[elementId]) clearTimeout(_autoSaveTimers[elementId]);
+    _autoSaveTimers[elementId] = setTimeout(() => {
+      _autoSaveSingleField(fieldName, value, label);
+    }, isInstant ? 0 : _AUTOSAVE_DEBOUNCE);
+  });
+}
+
+// يُستدعى مرة بعد loadSettings — يربط كل حقول tab "الإعدادات"
+function bindAutoSaveSettingsFields() {
+  if (window._settingsAutoSaveBound) return;
+  window._settingsAutoSaveBound = true;
+  // نصوص
+  wireAutoSave("s_storeName",    "storeName",        { label: "اسم المتجر" });
+  wireAutoSave("s_currency",     "currency",         { label: "العملة" });
+  wireAutoSave("s_welcome",      "welcomeMessage",   { label: "رسالة الترحيب" });
+  // أرقام
+  wireAutoSave("s_deliveryFee",  "deliveryFee",      { kind: "number", label: "رسوم التوصيل" });
+  wireAutoSave("s_deliveryTime", "avgDeliveryMin",   { kind: "int",    label: "وقت التوصيل المتوقع" });
+  // ساعات العمل: نحفظ النص كاملاً HH:MM
+  wireAutoSave("s_start",        "workingHoursStart",{ label: "وقت الفتح",   transform: v => v || "00:00" });
+  wireAutoSave("s_end",          "workingHoursEnd",  { label: "وقت الإقفال", transform: v => v || "23:59" });
+  // selects + colors
+  wireAutoSave("s_businessType",    "businessType",    { label: "نوع النشاط" });
+  wireAutoSave("s_color",           "invoiceColor",    { label: "لون الفاتورة" });
+  wireAutoSave("s_accentColor",     "themeAccent",     { label: "لون التمييز" });
+  wireAutoSave("s_textColor",       "themeText",       { label: "لون النص" });
+  wireAutoSave("s_textMuteColor",   "themeTextMute",   { label: "لون النص الثانوي" });
+  wireAutoSave("s_menuMode",        "menuMode",        { label: "وضع القائمة" });
+  wireAutoSave("s_invoiceTemplate", "invoiceTemplate", { label: "قالب الفاتورة" });
+  // toggles
+  wireAutoSave("s_requireConfirmation", "requireConfirmation", { label: "تأكيد الطلب" });
+  wireAutoSave("s_enableWebview",       "enableWebview",       { label: "تفعيل الويب" });
+  wireAutoSave("s_enableNumeric",       "enableNumeric",       { label: "تفعيل الأرقام" });
+  wireAutoSave("s_enableAI",            "enableAI",            { label: "تفعيل الذكاء" });
+  wireAutoSave("s_enableCoupons",       "enableCoupons",       { label: "تفعيل الكوبونات" });
+  // open24: خاص — يحفظ workingHoursStart+End معاً
+  const open24 = document.getElementById("s_open24");
+  if (open24 && open24.dataset.autosaveBound !== "1") {
+    open24.dataset.autosaveBound = "1";
+    open24.addEventListener("change", async () => {
+      if (open24.checked) {
+        await _autoSaveSingleField("workingHoursStart", "00:00", "وقت الفتح");
+        await _autoSaveSingleField("workingHoursEnd",   "23:59", "وقت الإقفال");
+      }
+    });
+  }
 }
 
 // ─── ساعات العمل: helpers ───────────────────────────────────────────────────
@@ -6376,6 +6483,8 @@ async function loadSettings() {
     else         { logoPrev.style.display = "none"; logoPh.style.display = "flex"; }
     updatePreview();
     localStorage.setItem("store_currency", store.currency || "ر.س");
+    // ربط auto-save لكل حقل بعد تعبئة القيم — مرة واحدة فقط
+    if (typeof bindAutoSaveSettingsFields === "function") bindAutoSaveSettingsFields();
   } catch (e) { if (e.status===401) doLogout(); }
 }
 
@@ -6524,12 +6633,24 @@ async function saveSettings() {
     localStorage.setItem("store_currency", payload.currency);
     const navEl = document.getElementById("navStoreName");
     if (navEl) navEl.textContent = STORE_NAME;
-    showToast("✅ تم حفظ الإعدادات", "success");
     applyStoreColor();
+    // رد جزئي: بعض الحقول فشلت
+    if (res.partial && Array.isArray(res.failed) && res.failed.length) {
+      const failedLabels = res.failed.map(f => f.label || f.field).join("، ");
+      showToast(`⚠️ حُفظ ${res.savedCount} حقل. لم يُحفظ: ${failedLabels}`, "warn");
+    } else {
+      showToast(`✅ تم حفظ ${res.savedCount || "كل"} الإعدادات`, "success");
+    }
   } catch (e) {
     console.error("[settings] save failed:", e, "payload was:", payload);
-    const msg = e?.error || e?.message || e?.data?.error || "فشل غير معروف";
-    showToast("❌ فشل الحفظ: " + msg, "error");
+    // رد الخطأ: 400 مع failed → اعرض كل واحد
+    if (Array.isArray(e?.failed) && e.failed.length) {
+      const failedLabels = e.failed.map(f => f.label || f.field).join("، ");
+      showToast(`❌ كل القيم غير صالحة: ${failedLabels}`, "error");
+    } else {
+      const msg = e?.error || e?.message || "فشل غير معروف";
+      showToast("❌ فشل الحفظ: " + msg, "error");
+    }
   }
 }
 
