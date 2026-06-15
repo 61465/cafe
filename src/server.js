@@ -1663,6 +1663,14 @@ async function handleOwnerCommand(from, text, store, storeId) {
         return { lines: updated };
       });
       _registerUndo(order.orderId, _prevStatus, "رفض");
+      // ⚠️ امسح أي تقييم معلّق (الطلب مرفوض → لا تقييم)
+      const _pcust = order.customerPhone;
+      if (_pcust && pendingRatings.has(_pcust)) {
+        const p = pendingRatings.get(_pcust);
+        if (p.timer) clearTimeout(p.timer);
+        if (p.reminderTimer) clearTimeout(p.reminderTimer);
+        pendingRatings.delete(_pcust);
+      }
       // أبلغ العميل
       try {
         await waMgr.sendMessage(storeId, order.customerPhone,
@@ -2056,6 +2064,13 @@ async function handleMessage(from, incoming) {
         });
         return { lines: updated };
       });
+      // ⚠️ امسح أي تقييم معلّق لهذا العميل (الطلب أُلغي → لا تقييم)
+      const pending = pendingRatings.get(from);
+      if (pending) {
+        if (pending.timer) clearTimeout(pending.timer);
+        if (pending.reminderTimer) clearTimeout(pending.reminderTimer);
+        pendingRatings.delete(from);
+      }
       // أبلغ المالك
       try {
         const ownerJid = (store?.ownerPhone || "").replace(/[^\d]/g, "") + "@s.whatsapp.net";
@@ -4180,12 +4195,18 @@ async function handleConfirmOrder(from, msg, session) {
     // Cancel any previous rating timer before scheduling a new one
     const prevRating = pendingRatings.get(from);
     if (prevRating?.timer) clearTimeout(prevRating.timer);
+    if (prevRating?.reminderTimer) clearTimeout(prevRating.reminderTimer);
 
-    // Schedule rating request after 5 minutes; auto-expire entry 30 min after request is sent
+    // Schedule rating request after 5 minutes — لكن مع فحص حالة الطلب قبل الإرسال
     const ratingTimer = setTimeout(async () => {
+      // ⚠️ defense: لا نرسل تقييماً لطلب ملغي/مرفوض
+      if (!_isOrderCompleted(storeId, orderId)) {
+        console.log(`[rating-request] skipped — order ${orderId} not completed`);
+        pendingRatings.delete(from);
+        return;
+      }
       try { await waMgr.sendMessage(storeId, from, ratingRequestMessage(storeName, orderId, 5)); }
       catch (e) { console.warn("[rating-request] failed:", e.message); }
-      // لا نحذف من pendingRatings — نحتفظ بها لـ 24h لتفعيل الـ reminder + قبول التقييم المتأخر
       setTimeout(() => { pendingRatings.delete(from); }, 24 * 60 * 60 * 1000);
     }, 5 * 60 * 1000);
     // تذكير 24h لو لم يقيم
@@ -4356,11 +4377,36 @@ async function _finalizeRating(from, comment) {
   }
 }
 
+// ─── Helper: هل الطلب لا يزال في حالة "مكتمل"؟ (للحماية من تقييم طلب ملغي) ──
+function _isOrderCompleted(storeId, orderId) {
+  if (!storeId || !orderId) return false;
+  try {
+    const ordersFile = storeId === "nakheel_001"
+      ? path.join(DATA_DIR, "orders.jsonl")
+      : path.join(DATA_DIR, `orders_${storeId}.jsonl`);
+    if (!fs.existsSync(ordersFile)) return false;
+    const lines = fs.readFileSync(ordersFile, "utf8").split("\n").filter(Boolean);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const o = JSON.parse(lines[i]);
+        if (o.orderId === orderId) return o.status === "completed";
+      } catch {}
+    }
+  } catch {}
+  return false;
+}
+
 // ─── Rating Reminder (24h لاحقاً لو لم يقيم) ───────────────────────────────
 function scheduleRatingReminder(from, storeId, storeName, orderId) {
   // نخزن في pendingRatings مع flag reminder للتمييز
   const reminderTimer = setTimeout(async () => {
     if (!pendingRatings.has(from)) return; // قَيّم بالفعل
+    // ⚠️ defense: لا تذكير لطلب ملغي/مرفوض
+    if (!_isOrderCompleted(storeId, orderId)) {
+      console.log(`[rating-reminder] skipped — order ${orderId} not completed`);
+      pendingRatings.delete(from);
+      return;
+    }
     try {
       const ratingsMod = require("./ratings");
       await waMgr.sendMessage(storeId, from, ratingsMod.reminderMessage(storeName));

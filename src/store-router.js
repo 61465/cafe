@@ -2328,6 +2328,14 @@ router.post("/store/orders/:orderId/reject", auth, async (req, res) => {
 
   const storeName = getStore(req.storeId)?.storeName || "المتجر";
 
+  // ⚠️ امسح أي تقييم معلّق للعميل — الطلب مرفوض
+  if (order.customerPhone && global.pendingRatings?.has(order.customerPhone)) {
+    const p = global.pendingRatings.get(order.customerPhone);
+    if (p?.timer) clearTimeout(p.timer);
+    if (p?.reminderTimer) clearTimeout(p.reminderTimer);
+    global.pendingRatings.delete(order.customerPhone);
+  }
+
   // Notify customer via Baileys
   if (order.customerPhone) {
     const rejectMsg =
@@ -2529,6 +2537,14 @@ router.post("/store/orders/:orderId/cancel", auth, async (req, res) => {
   const cancelledBy = by === "customer" ? "customer" : "store";
   const reasonClean = String(reason || (cancelledBy === "customer" ? "ألغى العميل الطلب" : "ألغى المالك الطلب")).slice(0, 300);
   updateOrderStatus(req.storeId, orderId, "cancelled", { cancelledBy, cancelReason: reasonClean });
+
+  // ⚠️ امسح أي تقييم معلّق للعميل — الطلب ملغي
+  if (order.customerPhone && global.pendingRatings?.has(order.customerPhone)) {
+    const p = global.pendingRatings.get(order.customerPhone);
+    if (p?.timer) clearTimeout(p.timer);
+    if (p?.reminderTimer) clearTimeout(p.reminderTimer);
+    global.pendingRatings.delete(order.customerPhone);
+  }
 
   const store = getStore(req.storeId);
   const storeName = store?.storeName || "المتجر";
