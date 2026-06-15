@@ -3901,16 +3901,8 @@ async function showOrderSummary(from, session) {
     if (dynamicLines) dynamicLines += "\n";
   }
 
-  // 📍 العنوان: اعرضه دائماً لو موجود (الاسم المقروء + رابط maps)
-  let locationLine = "";
-  if (session.customerLocationName) {
-    locationLine = `📍 *العنوان:* ${session.customerLocationName}\n`;
-    if (session.customerLocationMapsUrl) {
-      locationLine += `🗺️ ${session.customerLocationMapsUrl}\n`;
-    }
-  } else if (session.customerLocation && !String(session.customerLocation).startsWith("📍|")) {
-    locationLine = `📍 *العنوان:* ${session.customerLocation}\n`;
-  }
+  // 📍 العنوان: رابط دائماً (موجود أو مولَّد من النص + city)
+  const locationLine = require("./order-helpers").buildSummaryLocationLine(session, store);
   // ⏰ الوقت
   const timeLine = session.scheduledTime ? `⏰ *${labels.timeLabel}:* ${session.scheduledTime}\n` : "";
   // 📝 الملاحظات

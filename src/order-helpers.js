@@ -6,19 +6,27 @@
  * يبني سطر "الموقع المسجّل" لرسالة التأكيد.
  * يضيف رابط Google Maps دائماً — إن لم تكن إحداثيات GPS، يولّد رابط بحث.
  */
-function buildLocationLine(order, store) {
-  const name = order?.customerLocationName || order?.customerLocation || "";
-  if (!name) return "";
+// Helper مشترك: يجيب maps URL (موجود أو يولّد search query)
+function _resolveMapsUrl(name, existingUrl, store) {
+  if (existingUrl) return existingUrl;
+  const cityCtx = store?.city ? `, ${store.city}` : "";
+  const query = encodeURIComponent(`${name}${cityCtx}`).slice(0, 300);
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+}
 
-  let mapsUrl = order?.customerLocationMapsUrl || "";
-  if (!mapsUrl) {
-    // ولّد رابط بحث Google Maps من النص + مدينة المتجر للسياق
-    const cityCtx = store?.city ? `, ${store.city}` : "";
-    const query = encodeURIComponent(`${name}${cityCtx}`).slice(0, 300);
-    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
-  }
-  // نظّف الـ name من أي رابط مدمج قديم بصيغة "name (📍 url)"
-  const cleanName = String(name).replace(/\s*\(📍\s*https?:\/\/[^)]+\)\s*/g, "").trim() || name;
+function _cleanLocationName(name) {
+  // نظّف من رابط مدمج قديم بصيغة "name (📍 url)"
+  return String(name || "").replace(/\s*\(📍\s*https?:\/\/[^)]+\)\s*/g, "").trim() || String(name || "");
+}
+
+/**
+ * بعد تأكيد المالك — يحوي تنويه "تعديل الموقع".
+ */
+function buildLocationLine(order, store) {
+  const rawName = order?.customerLocationName || order?.customerLocation || "";
+  if (!rawName) return "";
+  const cleanName = _cleanLocationName(rawName);
+  const mapsUrl = _resolveMapsUrl(cleanName, order?.customerLocationMapsUrl, store);
   return (
     `\n📍 *الموقع المسجّل:* ${cleanName}\n` +
     `🗺️ ${mapsUrl}\n` +
@@ -26,4 +34,17 @@ function buildLocationLine(order, store) {
   );
 }
 
-module.exports = { buildLocationLine };
+/**
+ * ملخص قبل التأكيد — رابط بدون تنويه (العميل لا يزال في checkout).
+ * يقبل session/order — أي object فيه customerLocationName/MapsUrl.
+ */
+function buildSummaryLocationLine(sessionOrOrder, store) {
+  const rawName = sessionOrOrder?.customerLocationName
+    || (sessionOrOrder?.customerLocation && !String(sessionOrOrder.customerLocation).startsWith("📍|") ? sessionOrOrder.customerLocation : "");
+  if (!rawName) return "";
+  const cleanName = _cleanLocationName(rawName);
+  const mapsUrl = _resolveMapsUrl(cleanName, sessionOrOrder?.customerLocationMapsUrl, store);
+  return `📍 *العنوان:* ${cleanName}\n🗺️ ${mapsUrl}\n`;
+}
+
+module.exports = { buildLocationLine, buildSummaryLocationLine };
