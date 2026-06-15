@@ -892,6 +892,17 @@ const SETTING_VALIDATORS = {
   enableAI:           v => v !== false && v !== "false",
   enableCoupons:      v => v !== false && v !== "false",
   avgDeliveryMin:     v => { if (v === null || v === "" || v === undefined) return null; const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 && n <= 300 ? n : null; },
+  // 🛠️ Maintenance mode — per-store عزل كامل
+  maintenanceMode:    v => v === true || v === "true" || v === 1 || v === "1",
+  maintenanceMessage: v => v == null || v === "" ? "" : String(v).slice(0, 800),
+  maintenanceUntil:   v => {
+    if (v == null || v === "") return "";
+    const s = String(v).trim();
+    // يقبل ISO أو datetime-local "YYYY-MM-DDTHH:mm"
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  },
 };
 
 // ترجمة أسماء الحقول لـ user-friendly في الـ warnings

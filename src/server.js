@@ -1840,6 +1840,44 @@ async function handleMessage(from, incoming) {
     // result === false → استكمل الـ flow الطبيعي (المالك يطلب من متجره نفسه)
   }
 
+  // 🛠️ Maintenance mode — per-store عزل تام
+  //   يفحص ONLY متجر storeId الحالي. باقي المتاجر غير متأثرة (storeCtx مفصول).
+  //   لو maintenanceUntil فات → نفك الصيانة تلقائياً (lazy unset).
+  if (store?.maintenanceMode) {
+    const untilISO = store.maintenanceUntil;
+    const untilMs  = untilISO ? new Date(untilISO).getTime() : 0;
+    if (untilMs && Date.now() > untilMs) {
+      // فك الصيانة تلقائياً للمتجر الحالي فقط — atomic عبر withLock
+      try {
+        const af = require("./atomic-fs");
+        const storesFile = path.join(DATA_DIR, "stores.json");
+        await af.withLock(storesFile, async () => {
+          const data = af.readJsonSync(storesFile, { stores: [] });
+          const idx = data.stores.findIndex(s => s.id === storeId);
+          if (idx >= 0 && data.stores[idx].maintenanceMode) {
+            data.stores[idx].maintenanceMode = false;
+            af.writeJsonSync(storesFile, data);
+            console.log(`[maintenance] [${storeId}] auto-unset (until passed)`);
+          }
+        });
+      } catch (e) { console.warn("[maintenance] auto-unset failed:", e.message); }
+    } else {
+      // مازال في صيانة → ردّ برسالة وأنهِ
+      // throttle: لا نُرسل لنفس العميل أكثر من مرة كل 30 دقيقة
+      const lastSent = session.maintNotifiedAt || 0;
+      if (Date.now() - lastSent < 30 * 60_000) return;
+      sessionManager.update(from, { maintNotifiedAt: Date.now() });
+      const baseMsg = store.maintenanceMessage || `🛠️ *${store.storeName || "المتجر"}* مغلق مؤقتاً للصيانة.\nنعتذر عن الإزعاج، نعود قريباً ✨`;
+      let extra = "";
+      if (untilMs) {
+        const ar = new Date(untilMs).toLocaleString("ar-SA", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "long", hour12: true });
+        extra = `\n\n⏰ *نعود الساعة:* ${ar}`;
+      }
+      try { await waMgr.sendMessage(storeId, from, baseMsg + extra); } catch {}
+      return;
+    }
+  }
+
   // ⏸ Mute check: إذا الجلسة مُسكّتة، تجاهل كل الرسائل (إلا إشارات الكسر)
   if (session.mutedUntil && Date.now() < session.mutedUntil) {
     const trimmed = aiParser.normalizeAr(String(incoming || "").trim());

@@ -922,6 +922,44 @@ tr:hover td{background:#fafcfa}
           </div>
         </div>
 
+        <!-- 🛠️ Maintenance Mode Banner — مكان ظاهر بأعلى الإعدادات -->
+        <div id="maintenanceBanner" style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #f59e0b;border-radius:14px;padding:16px 20px;margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <span style="font-size:22px">🛠️</span>
+                <span style="font-weight:900;font-size:16px;color:#78350f">وضع الصيانة</span>
+                <span id="maintBadge" style="display:none;background:#dc2626;color:#fff;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:800">🔴 نشط</span>
+              </div>
+              <div style="font-size:12.5px;color:#78350f">عند تفعيله، البوت يردّ على كل رسالة برسالة الصيانة فقط — مفيد عند إجازة، تحديث، أو نفاد المخزون.</div>
+            </div>
+            <label style="display:inline-flex;align-items:center;cursor:pointer;position:relative;width:54px;height:28px;flex-shrink:0">
+              <input type="checkbox" id="s_maintenanceMode" style="opacity:0;width:0;height:0">
+              <span id="maintSlider" style="position:absolute;inset:0;background:#d1d5db;border-radius:28px;transition:.2s"></span>
+              <span id="maintKnob" style="position:absolute;top:3px;right:3px;width:22px;height:22px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span>
+            </label>
+          </div>
+          <div id="maintenanceDetails" style="display:none;margin-top:12px;padding-top:12px;border-top:1px dashed #f59e0b">
+            <label style="display:block;font-size:12.5px;font-weight:700;color:#78350f;margin-bottom:5px">📝 رسالة الصيانة للعملاء</label>
+            <textarea id="s_maintenanceMessage" rows="3" placeholder="مثال: 🛠️ المتجر مغلق مؤقتاً للصيانة، نعتذر عن الإزعاج. نعود قريباً ✨" style="width:100%;padding:10px;border:1px solid #fcd34d;border-radius:8px;font-family:inherit;font-size:13px;background:#fff;resize:vertical"></textarea>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+              <div>
+                <label style="display:block;font-size:12px;font-weight:700;color:#78350f;margin-bottom:4px">⏰ يعود الساعة (اختياري)</label>
+                <input id="s_maintenanceUntil" type="datetime-local" style="width:100%;padding:8px;border:1px solid #fcd34d;border-radius:7px;font-family:inherit;font-size:13px;background:#fff">
+              </div>
+              <div style="display:flex;align-items:end;gap:6px;flex-wrap:wrap">
+                <button type="button" onclick="setMaintHours(1)" style="background:#fff;border:1px solid #fcd34d;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">+1 ساعة</button>
+                <button type="button" onclick="setMaintHours(3)" style="background:#fff;border:1px solid #fcd34d;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">+3 ساعات</button>
+                <button type="button" onclick="setMaintHours(24)" style="background:#fff;border:1px solid #fcd34d;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">+24 ساعة</button>
+                <button type="button" onclick="setMaintHours(0)" style="background:#fee2e2;border:1px solid #fecaca;color:#991b1b;padding:8px 12px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:700">🗑️ مسح</button>
+              </div>
+            </div>
+            <div style="background:#fff;border-radius:8px;padding:9px 12px;margin-top:10px;font-size:11.5px;color:#92400e;line-height:1.6">
+              💡 لو حُدد وقت، الرسالة تُضيف تلقائياً: "نعود الساعة XX:XX". لو فاتت الساعة، البوت يفك الصيانة تلقائياً.
+            </div>
+          </div>
+        </div>
+
         <div class="section-label">معلومات المتجر الأساسية</div>
         <div class="form-grid">
           <div class="field">
@@ -2791,6 +2829,40 @@ function setDeliveryTime(min) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+// ─── Maintenance mode helpers ───────────────────────────────────────────────
+function toggleMaintenanceUI() {
+  const on = document.getElementById("s_maintenanceMode").checked;
+  const slider = document.getElementById("maintSlider");
+  const knob   = document.getElementById("maintKnob");
+  const badge  = document.getElementById("maintBadge");
+  const detail = document.getElementById("maintenanceDetails");
+  if (on) {
+    slider.style.background = "#dc2626";
+    knob.style.right = "auto"; knob.style.left = "3px";
+    if (badge) badge.style.display = "inline-block";
+    if (detail) detail.style.display = "block";
+  } else {
+    slider.style.background = "#d1d5db";
+    knob.style.right = "3px"; knob.style.left = "auto";
+    if (badge) badge.style.display = "none";
+    if (detail) detail.style.display = "none";
+  }
+}
+
+function setMaintHours(hours) {
+  const el = document.getElementById("s_maintenanceUntil");
+  if (!el) return;
+  if (hours === 0) {
+    el.value = "";
+  } else {
+    const d = new Date(Date.now() + hours * 60 * 60 * 1000);
+    // datetime-local يحتاج YYYY-MM-DDTHH:mm (في local time، بدون Z)
+    const pad = n => String(n).padStart(2,"0");
+    el.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 // ═════════════ Auto-save: كل حقل يُحفظ منفرداً عند تغيّره ═════════════
 // debounce timers لكل حقل
 const _autoSaveTimers = {};
@@ -2885,6 +2957,19 @@ function bindAutoSaveSettingsFields() {
   wireAutoSave("s_enableNumeric",       "enableNumeric",       { label: "تفعيل الأرقام" });
   wireAutoSave("s_enableAI",            "enableAI",            { label: "تفعيل الذكاء" });
   wireAutoSave("s_enableCoupons",       "enableCoupons",       { label: "تفعيل الكوبونات" });
+  // 🛠️ Maintenance mode
+  wireAutoSave("s_maintenanceMessage",  "maintenanceMessage",  { label: "رسالة الصيانة" });
+  // datetime-local يرسل قيمة local string؛ السيرفر يفهمها كـ ISO local
+  wireAutoSave("s_maintenanceUntil",    "maintenanceUntil",    { label: "وقت العودة من الصيانة" });
+  // toggle خاص — يحدّث UI + يحفظ
+  const maintEl = document.getElementById("s_maintenanceMode");
+  if (maintEl && maintEl.dataset.autosaveBound !== "1") {
+    maintEl.dataset.autosaveBound = "1";
+    maintEl.addEventListener("change", async () => {
+      toggleMaintenanceUI();
+      await _autoSaveSingleField("maintenanceMode", maintEl.checked, "وضع الصيانة");
+    });
+  }
   // open24: خاص — يحفظ workingHoursStart+End معاً
   const open24 = document.getElementById("s_open24");
   if (open24 && open24.dataset.autosaveBound !== "1") {
@@ -6504,6 +6589,23 @@ async function loadSettings() {
     else         { logoPrev.style.display = "none"; logoPh.style.display = "flex"; }
     updatePreview();
     localStorage.setItem("store_currency", store.currency || "ر.س");
+    // 🛠️ Maintenance mode — تعبئة
+    const maintEl = document.getElementById("s_maintenanceMode");
+    if (maintEl) maintEl.checked = !!store.maintenanceMode;
+    const maintMsg = document.getElementById("s_maintenanceMessage");
+    if (maintMsg) maintMsg.value = store.maintenanceMessage || "";
+    const maintUntil = document.getElementById("s_maintenanceUntil");
+    if (maintUntil && store.maintenanceUntil) {
+      // convert ISO إلى datetime-local format
+      try {
+        const d = new Date(store.maintenanceUntil);
+        if (!isNaN(d.getTime())) {
+          const pad = n => String(n).padStart(2,"0");
+          maintUntil.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+      } catch {}
+    } else if (maintUntil) maintUntil.value = "";
+    if (typeof toggleMaintenanceUI === "function") toggleMaintenanceUI();
     // ربط auto-save لكل حقل بعد تعبئة القيم — مرة واحدة فقط
     if (typeof bindAutoSaveSettingsFields === "function") bindAutoSaveSettingsFields();
   } catch (e) { if (e.status===401) doLogout(); }
