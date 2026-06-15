@@ -2257,12 +2257,19 @@ router.post("/store/orders/:orderId/confirm", auth, async (req, res) => {
     const etaLine = estimatedMinutes
       ? `⏱️ الوقت المتوقع: *${estimatedMinutes} دقيقة* تقريباً\n`
       : "";
+    // رابط الموقع المسجّل — حتى يتأكد العميل من صحته قبل التوصيل
+    const locName = order.customerLocationName || order.customerLocation || "";
+    const locMaps = order.customerLocationMapsUrl || "";
+    const locationLine = locName
+      ? `\n📍 *الموقع المسجّل:* ${locName}\n${locMaps ? `🗺️ ${locMaps}\n` : ""}_⚠️ إن لم يكن الموقع صحيحاً، اكتب: *تعديل الموقع*_\n`
+      : "";
     const confirmMsg =
       `✅ *تم تأكيد طلبك!*\n\n` +
       `رقم الطلب: *${orderId}*\n` +
       etaLine +
       pointsLine +
-      `📦 لتتبع طلبك في أي وقت اكتب: *تتبع*\n\n` +
+      locationLine +
+      `\n📦 لتتبع طلبك في أي وقت اكتب: *تتبع*\n\n` +
       `شكراً لاختيارك *${storeName}*`;
     try { await waMgr.sendMessage(req.storeId, order.customerPhone, confirmMsg); } catch {}
 

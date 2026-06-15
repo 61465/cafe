@@ -1625,11 +1625,18 @@ async function handleOwnerCommand(from, text, store, storeId) {
       const pointsLine = (earned && earned.newPoints > 0)
         ? `\n🏆 كسبت *${earned.newPoints}* نقطة! رصيدك: *${earned.totalPoints}*\n` : "";
       const etaLine = store?.avgDeliveryMin ? `⏱️ الوقت المتوقع: *${store.avgDeliveryMin} دقيقة* تقريباً\n` : "";
+      // رابط الموقع المسجّل — حتى يتأكد العميل من صحته
+      const locName  = order.customerLocationName || order.customerLocation || "";
+      const locMaps  = order.customerLocationMapsUrl || "";
+      const locationLine = locName
+        ? `\n📍 *الموقع المسجّل:* ${locName}\n${locMaps ? `🗺️ ${locMaps}\n` : ""}_⚠️ إن لم يكن الموقع صحيحاً، اكتب: *تعديل الموقع*_\n`
+        : "";
       const confirmMsg =
         `✅ *تم تأكيد طلبك!*\n\nرقم الطلب: *${order.orderId}*\n` +
         etaLine +
         pointsLine +
-        `سيتم توصيل طلبك قريباً 🚴\n\nشكراً لاختيارك *${store?.storeName || ""}*`;
+        locationLine +
+        `\nسيتم توصيل طلبك قريباً 🚴\n\nشكراً لاختيارك *${store?.storeName || ""}*`;
       try {
         await waMgr.sendMessage(storeId, order.customerPhone, confirmMsg);
       } catch {}
@@ -2078,6 +2085,12 @@ async function handleMessage(from, incoming) {
     return handleOrderTracking(from, orderId);
   }
 
+  // ── تعديل الموقع لآخر طلب نشط (بعد تأكيد المالك يرى رابطه ويصلح) ──────────
+  const editLocMatch = /^(تعديل\s*الموقع|تعديل\s*العنوان|edit\s*location|fix\s*location)\s*(ORD-?\d+)?\s*$/i.exec(msg?.trim() || "");
+  if (editLocMatch) {
+    return handleEditLocationRequest(from, editLocMatch[2]);
+  }
+
   // ── Loyalty points command ───────────────────────────────────────────────────
   if (/^(نقاطي|رصيد نقاطي|loyalty|points)$/i.test(msg?.trim() || "")) {
     return sendText(from, pointsMessage(storeId, from, store));
@@ -2194,6 +2207,7 @@ async function handleMessage(from, incoming) {
       if (msg === "ORDER_MENU")    return sendTextOrderMenu(from);
       return handleOrderBrowse(from, msg, session);
     case "DYNAMIC_Q":        return handleDynamicQuestion(from, msg, session);
+    case "EDIT_LOCATION":    return handleEditLocationResponse(from, msg, session);
     case "COLLECT_NAME":     return handleCollectName(from, msg, session);
     case "COLLECT_LOCATION": return handleCollectLocation(from, msg, session);
     case "SCHEDULE_ORDER":   return handleScheduleOrder(from, msg, session);
@@ -4304,6 +4318,101 @@ function scheduleRatingReminder(from, storeId, storeName, orderId) {
   }, 24 * 60 * 60 * 1000);
   reminderTimer.unref?.();
   return reminderTimer;
+}
+
+// ─── Edit Location for an active order ────────────────────────────────────────
+// العميل يكتب "تعديل الموقع" → ندخله في حالة EDIT_LOCATION، نسأله موقع جديد،
+// عند الاستلام نحدّث الـ order ونرسل تأكيد للمالك والعميل.
+const ACTIVE_STATUSES_FOR_EDIT = ["pending_confirmation", "confirmed", "preparing", "ready_pickup"];
+
+async function handleEditLocationRequest(from, explicitOrderId) {
+  const { store, storeId } = storeCtx.getStore() || {};
+  const orders = readOrders(storeId, 200);
+  const phone = phoneNum(from);
+  // اعثر على الطلب: إما برقم معطى أو آخر طلب نشط
+  let order = null;
+  if (explicitOrderId) {
+    const suffix = String(explicitOrderId).replace(/\D/g, "");
+    order = orders.find(o => o.orderId && o.orderId.endsWith(suffix) && phoneNum(o.customerPhone) === phone);
+  } else {
+    const mine = orders
+      .filter(o => phoneNum(o.customerPhone) === phone && ACTIVE_STATUSES_FOR_EDIT.includes(o.status) && !o._test)
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+    order = mine[0] || null;
+  }
+  if (!order) {
+    return sendText(from, "❌ لا يوجد طلب نشط يمكن تعديل موقعه.\nاكتب *تتبع* لرؤية حالة طلباتك.");
+  }
+  sessionManager.update(from, { step: "EDIT_LOCATION", editingLocationOrderId: order.orderId });
+  return sendText(from,
+    `📍 *تعديل موقع الطلب ${order.orderId}*\n\n` +
+    `أرسل الآن:\n` +
+    `🗺️ موقعك من زر المرفقات في واتساب (الأدق)\n` +
+    `أو اكتب عنواناً نصياً واضحاً.\n\n` +
+    `للإلغاء اكتب *الغاء*`
+  );
+}
+
+async function handleEditLocationResponse(from, msg, session) {
+  const { store, storeId } = storeCtx.getStore() || {};
+  const text = String(msg || "").trim();
+  if (/^(الغاء|إلغاء|cancel|رجوع|back)$/i.test(text)) {
+    sessionManager.update(from, { step: undefined, editingLocationOrderId: undefined });
+    return sendText(from, "تم إلغاء تعديل الموقع.");
+  }
+  const orderId = session.editingLocationOrderId;
+  if (!orderId) {
+    sessionManager.update(from, { step: undefined });
+    return; // فقد السياق
+  }
+  // استقبل موقع مشترك أو نص
+  let newLocName = "", newMapsUrl = "", newLat = null, newLng = null;
+  if (text.startsWith("📍|")) {
+    const resolved = await resolveSharedLocation(text);
+    if (!resolved) return sendText(from, "❌ لم أفهم الموقع المشترك. حاول مجدداً أو اكتب عنواناً.");
+    newLocName = resolved.name;
+    newMapsUrl = `https://maps.google.com/?q=${resolved.lat},${resolved.lng}`;
+    newLat = resolved.lat; newLng = resolved.lng;
+  } else if (text.length >= 5) {
+    newLocName = text.slice(0, 200);
+  } else {
+    return sendText(from, "❌ من فضلك أرسل موقعاً صالحاً (شارك موقعك أو اكتب عنواناً واضحاً).");
+  }
+  // حدّث الـ order في الـ JSONL — atomic
+  const ordersFile = storeId === "nakheel_001" ? path.join(DATA_DIR, "orders.jsonl") : path.join(DATA_DIR, `orders_${storeId}.jsonl`);
+  await require("./atomic-fs").updateJsonlLocked(ordersFile, (lines) => {
+    const updated = lines.map(l => {
+      try {
+        const o = JSON.parse(l);
+        if (o.orderId === orderId) {
+          o.customerLocation         = newMapsUrl ? `${newLocName} (📍 ${newMapsUrl})` : newLocName;
+          o.customerLocationName     = newLocName;
+          o.customerLocationMapsUrl  = newMapsUrl || null;
+          o.customerLocationLat      = newLat;
+          o.customerLocationLng      = newLng;
+          o.locationEditedAt         = new Date().toISOString();
+        }
+        return JSON.stringify(o);
+      } catch { return l; }
+    });
+    return { lines: updated };
+  });
+  // أبلغ المالك
+  try {
+    const ownerJid = String(store?.ownerPhone || "").replace(/\D/g, "") + "@s.whatsapp.net";
+    if (store?.ownerPhone) {
+      await waMgr.sendMessage(storeId, ownerJid,
+        `📍 *تحديث موقع طلب ${orderId}*\n\n` +
+        `العميل ${session.customerName || ""} عدّل موقع التوصيل:\n\n` +
+        `${newLocName}\n${newMapsUrl ? newMapsUrl : ""}`);
+    }
+  } catch {}
+  sessionManager.update(from, { step: undefined, editingLocationOrderId: undefined });
+  return sendText(from,
+    `✅ *تم تحديث موقع الطلب ${orderId}*\n\n` +
+    `📍 ${newLocName}\n${newMapsUrl ? `🗺️ ${newMapsUrl}\n` : ""}\n` +
+    `أُبلغ المتجر بالتعديل ✨`
+  );
 }
 
 // ─── Order Tracking ───────────────────────────────────────────────────────────
