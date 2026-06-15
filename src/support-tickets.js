@@ -62,32 +62,57 @@ function createTicket(storeId, { subject, body, priority, category }) {
   return ticket;
 }
 
-function getTicket(id) { return _readTicket(id); }
+async function getTicket(id) {
+  const t = _readTicket(id);
+  if (!t) return null;
+  try {
+    const db = require("./db");
+    const s = await db.getStore(t.storeId);
+    if (s) {
+      t.storeName  = s.storeName || s.name || "";
+      t.ownerPhone = s.ownerPhone || "";
+    }
+  } catch (e) {
+    console.error("[support-tickets] getTicket fetch store failed:", e);
+  }
+  return t;
+}
 
 function listForStore(storeId, { status = null, limit = 100 } = {}) {
   const idx = _readIndex();
-  // الـ index قد يحتوي على نفس id مرات (تحديثات) — نأخذ الأحدث فقط
+  // First, find the latest state of each ticket for the given store
   const latest = new Map();
   for (const row of idx) {
     if (row.storeId !== storeId) continue;
-    if (status && row.status !== status) continue;
     latest.set(row.id, row);
   }
-  return Array.from(latest.values())
+  // Second, filter by status
+  const filtered = [];
+  for (const row of latest.values()) {
+    if (status && row.status !== status) continue;
+    filtered.push(row);
+  }
+  return filtered
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
     .slice(0, limit);
 }
 
-function listAll({ status = null, priority = null, storeId = null, limit = 200 } = {}) {
+async function listAll({ status = null, priority = null, storeId = null, limit = 200 } = {}) {
   const idx = _readIndex();
+  // First, find the latest state of each ticket
   const latest = new Map();
   for (const row of idx) {
-    if (status   && row.status !== status)   continue;
-    if (priority && row.priority !== priority) continue;
-    if (storeId  && row.storeId !== storeId) continue;
     latest.set(row.id, row);
   }
-  return Array.from(latest.values())
+  // Second, filter by status, priority, and storeId
+  const filtered = [];
+  for (const row of latest.values()) {
+    if (status   && row.status !== status)   continue;
+    if (priority && row.priority !== priority) continue;
+    if (storeId  && row.storeId !== storeId)   continue;
+    filtered.push(row);
+  }
+  const items = filtered
     .sort((a, b) => {
       // الأولوية: urgent>high>medium>low ثم الأقدم أولاً
       const pri = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -96,6 +121,24 @@ function listAll({ status = null, priority = null, storeId = null, limit = 200 }
       return (a.updatedAt || "").localeCompare(b.updatedAt || "");
     })
     .slice(0, limit);
+
+  // إضافة storeName وownerPhone من قاعدة البيانات (متوافق مع Firestore والملفات المحلية)
+  try {
+    const db = require("./db");
+    const stores = await db.getStores();
+    const storeMap = new Map((stores || []).map(s => [s.id, s]));
+    for (const item of items) {
+      const s = storeMap.get(item.storeId);
+      if (s) {
+        item.storeName  = s.storeName || s.name || "";
+        item.ownerPhone = s.ownerPhone || "";
+      }
+    }
+  } catch (e) {
+    console.error("[support-tickets] listAll fetch stores failed:", e);
+  }
+
+  return items;
 }
 
 function replyToTicket(ticketId, { from, message }) {
@@ -131,8 +174,8 @@ function updateStatus(ticketId, newStatus) {
   return t;
 }
 
-function getStats() {
-  const all = listAll({ limit: 1000 });
+async function getStats() {
+  const all = await listAll({ limit: 1000 });
   const today = new Date().toISOString().slice(0, 10);
   const open = all.filter(t => t.status === "open").length;
   const inProgress = all.filter(t => t.status === "in_progress").length;

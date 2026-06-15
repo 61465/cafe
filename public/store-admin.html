@@ -892,7 +892,7 @@ tr:hover td{background:#fafcfa}
           <div class="card-title"><span data-biz="orderInbox">📦 الطلبات الواردة</span></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" onclick="createTestOrder()" title="ينشئ طلب اختباري لتجربة tab الطلبات">🧪 طلب اختبار</button>
-            <button class="btn btn-outline btn-sm" onclick="openExportOrdersModal()">📤 تصدير CSV</button>
+            <button class="btn btn-outline btn-sm" onclick="openExportOrdersModal()">📤 تصدير الطلبات</button>
             <button class="btn btn-outline btn-sm" onclick="loadOrders()">🔄 تحديث</button>
           </div>
         </div>
@@ -984,6 +984,11 @@ tr:hover td{background:#fafcfa}
           <div class="field" id="s_deliveryFeeRow">
             <label>رسوم التوصيل / الخدمة</label>
             <input id="s_deliveryFee" type="number" placeholder="10">
+          </div>
+          <div class="field" id="s_deliveryTimeRow">
+            <label>⏱️ وقت التوصيل المتوقع (دقيقة)</label>
+            <input id="s_deliveryTime" type="number" min="0" max="300" placeholder="مثال: 30" style="">
+            <span class="hint">يظهر في رأس صفحة الطلب للعملاء 🚴 ~30 دقيقة — اتركه فارغاً لإخفائه</span>
           </div>
           <div class="field">
             <label>ساعات العمل</label>
@@ -1396,6 +1401,14 @@ tr:hover td{background:#fafcfa}
         </div>
         <button onclick="openNewTicketModal()" style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;padding:10px 18px;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px;box-shadow:0 3px 10px rgba(245,158,11,.3)">➕ تذكرة جديدة</button>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button id="tkFilterActive" class="ord-filter active" onclick="setTicketFilter('active')" style="border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">
+          🔴 نشطة <span id="tkActiveCount" style="font-size:11px"></span>
+        </button>
+        <button id="tkFilterResolved" class="ord-filter" onclick="setTicketFilter('resolved')" style="border-radius:8px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">
+          ✅ محلولة/مغلقة <span id="tkResolvedCount" style="font-size:11px"></span>
+        </button>
+      </div>
       <div id="ticketsList"><div style="text-align:center;padding:40px;color:#9ca3af">⏳ جاري التحميل...</div></div>
     </section>
 
@@ -1500,8 +1513,8 @@ tr:hover td{background:#fafcfa}
     <div id="exportOrdersModal" onclick="if(event.target===this)closeExportOrdersModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1250;align-items:center;justify-content:center;padding:18px">
       <div style="background:#fff;border-radius:14px;max-width:440px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);overflow:hidden">
         <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;padding:16px 20px">
-          <div style="font-size:17px;font-weight:900">📤 تصدير الطلبات CSV</div>
-          <div style="font-size:12px;opacity:.9;margin-top:3px">حدّد الفترة والحالة</div>
+          <div style="font-size:17px;font-weight:900">📤 تصدير الطلبات</div>
+          <div style="font-size:12px;opacity:.9;margin-top:3px">حدّد الفترة والحالة ثم اختر الصيغة</div>
         </div>
         <div style="padding:18px 20px">
           <label style="display:block;font-size:13px;font-weight:700;color:#374151;margin-bottom:6px">من تاريخ</label>
@@ -1518,11 +1531,24 @@ tr:hover td{background:#fafcfa}
             <option value="cancelled">🚫 ملغي</option>
           </select>
           <div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 12px;margin-top:12px;font-size:11px;color:#1e40af;line-height:1.6">
-            💡 اتركه فارغ = كل الفترة. الـ CSV يفتح في Excel/Google Sheets مباشرة.
+            💡 اتركه فارغ = كل الفترة. اختر الصيغة المناسبة لاستخدامك.
           </div>
-          <div style="display:flex;gap:8px;margin-top:14px">
-            <button onclick="closeExportOrdersModal()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:11px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
-            <button onclick="doExportOrders()" style="flex:2;background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;border:none;padding:11px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit">📥 تنزيل</button>
+          <div style="margin-top:14px;display:grid;grid-template-columns:1fr;gap:8px">
+            <button onclick="doExportOrdersAs('xlsx')" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;padding:12px 14px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit;text-align:right;display:flex;align-items:center;justify-content:space-between">
+              <span>📊 Excel (.xlsx)</span>
+              <span style="font-size:11px;font-weight:600;opacity:.92">للمحاسب والتحليل</span>
+            </button>
+            <button onclick="doExportOrdersAs('pdf')" style="background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;border:none;padding:12px 14px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit;text-align:right;display:flex;align-items:center;justify-content:space-between">
+              <span>📑 PDF</span>
+              <span style="font-size:11px;font-weight:600;opacity:.92">للطباعة والأرشيف</span>
+            </button>
+            <button onclick="doExportOrders()" style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;border:none;padding:12px 14px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit;text-align:right;display:flex;align-items:center;justify-content:space-between">
+              <span>📋 CSV</span>
+              <span style="font-size:11px;font-weight:600;opacity:.92">أبسط صيغة، يفتح في كل مكان</span>
+            </button>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button onclick="closeExportOrdersModal()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:10px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إغلاق</button>
           </div>
         </div>
       </div>
@@ -1803,7 +1829,12 @@ tr:hover td{background:#fafcfa}
       <div class="card">
         <div class="card-header">
           <div class="card-title">👥 سجل العملاء</div>
-          <button class="btn btn-outline btn-sm" onclick="archiveCustomers()" title="أرشفة غير المميزين هذا الشهر">📦 أرشفة شهرية</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="exportCustomersAs('csv')">📋 CSV</button>
+            <button class="btn btn-outline btn-sm" onclick="exportCustomersAs('xlsx')">📊 Excel</button>
+            <button class="btn btn-outline btn-sm" onclick="exportCustomersAs('pdf')">📑 PDF</button>
+            <button class="btn btn-outline btn-sm" onclick="archiveCustomers()" title="أرشفة غير المميزين هذا الشهر">📦 أرشفة شهرية</button>
+          </div>
         </div>
         <div style="overflow-x:auto">
           <table class="orders-table" id="customersTable">
@@ -2045,7 +2076,9 @@ tr:hover td{background:#fafcfa}
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
           <h3 style="font-size:15px;font-weight:800;margin:0">قائمة الأرباح والخسائر — <span id="pnlMonthLabel">—</span></h3>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button class="btn btn-outline" onclick="exportPnLCsv()">📥 تصدير CSV</button>
+            <button class="btn btn-outline" onclick="exportPnL('csv')">📋 CSV</button>
+            <button class="btn btn-outline" onclick="exportPnL('xlsx')">📊 Excel</button>
+            <button class="btn btn-outline" onclick="exportPnL('pdf')">📑 PDF</button>
             <button class="btn btn-outline" onclick="closeAccountingMonth()" id="closeMonthBtn">🔒 تقفيل الشهر</button>
           </div>
         </div>
@@ -2579,6 +2612,7 @@ const BUSINESS_LABELS = {
     feeLabel: "رسوم التوصيل", actionLabel: "توصيل",
     tabMenu: "📋 القائمة", tabOrders: "📦 الطلبات", tabCustomers: "👥 العملاء",
     productPlaceholder: "مثال: شاورما، عصير، كنافة",
+    timeLabel: "⏱️ وقت التوصيل المتوقع (دقيقة)",
   },
   pickup: {
     emoji: "🏪", name: "استلام من المحل (كافيه/مخبز)",
@@ -2586,13 +2620,15 @@ const BUSINESS_LABELS = {
     feeLabel: null, actionLabel: "استلام",
     tabMenu: "☕ المنيو", tabOrders: "📦 الطلبات", tabCustomers: "👥 العملاء",
     productPlaceholder: "مثال: كابتشينو، كرواسان، فرابتشينو",
+    timeLabel: "⏱️ وقت التجهيز المتوقع (دقيقة)",
   },
-  homeService: {
-    emoji: "🏠", name: "خدمة منزلية (صيانة/تنظيف)",
-    orderLabel: "حجز", customerLabel: "العميل", productLabel: "الخدمة",
-    feeLabel: "رسوم الخدمة", actionLabel: "زيارة",
-    tabMenu: "🛠️ الخدمات", tabOrders: "📅 الحجوزات", tabCustomers: "👥 العملاء",
-    productPlaceholder: "مثال: تنظيف منزل، صيانة تكييف، تركيب",
+  dineIn: {
+    emoji: "🍴", name: "طلب داخل المحل",
+    orderLabel: "طلب", customerLabel: "عميل", productLabel: "منتج",
+    feeLabel: null, actionLabel: "تحضير",
+    tabMenu: "🍴 المنيو", tabOrders: "📦 الطلبات", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: وجبة، عصير",
+    timeLabel: "⏱️ وقت التجهيز المتوقع (دقيقة)",
   },
   walkin: {
     emoji: "💆", name: "زيارة المحل (صالون/عيادة/مكتبة)",
@@ -2600,6 +2636,87 @@ const BUSINESS_LABELS = {
     feeLabel: null, actionLabel: "موعد",
     tabMenu: "📚 المعروض", tabOrders: "📅 المواعيد", tabCustomers: "👥 الزوار",
     productPlaceholder: "مثال: قص شعر، كشف، كتاب",
+    timeLabel: "⏱️ وقت الانتظار المتوقع (دقيقة)",
+  },
+  booking: {
+    emoji: "📅", name: "حجز موعد مسبق",
+    orderLabel: "حجز", customerLabel: "عميل", productLabel: "الخدمة",
+    feeLabel: null, actionLabel: "حجز",
+    tabMenu: "💆 الخدمات", tabOrders: "📅 الحجوزات", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: جلسة تجميل، مساج",
+    timeLabel: "⏱️ مدة الخدمة المتوقعة (دقيقة)",
+  },
+  homeService: {
+    emoji: "🏠", name: "خدمة منزلية (صيانة/تنظيف)",
+    orderLabel: "حجز", customerLabel: "العميل", productLabel: "الخدمة",
+    feeLabel: "رسوم الخدمة", actionLabel: "زيارة",
+    tabMenu: "🛠️ الخدمات", tabOrders: "📅 الحجوزات", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: تنظيف منزل، صيانة تكييف، تركيب",
+    timeLabel: "⏱️ وقت الوصول المتوقع (دقيقة)",
+  },
+  onSite: {
+    emoji: "🚐", name: "خدمة في موقع العميل",
+    orderLabel: "حجز", customerLabel: "العميل", productLabel: "الخدمة",
+    feeLabel: "رسوم الخدمة", actionLabel: "زيارة",
+    tabMenu: "🛠️ الخدمات", tabOrders: "📅 الحجوزات", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: غسيل سيارات في الموقع",
+    timeLabel: "⏱️ وقت الوصول المتوقع (دقيقة)",
+  },
+  remote: {
+    emoji: "💻", name: "خدمة عن بُعد (برمجة، تصميم، استشارات)",
+    orderLabel: "مشروع", customerLabel: "عميل", productLabel: "الخدمة",
+    feeLabel: null, actionLabel: "تسليم",
+    tabMenu: "💻 الخدمات", tabOrders: "📂 المشاريع", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: تصميم شعار، تطوير تطبيق",
+    timeLabel: "⏱️ وقت التسليم/التنفيذ المتوقع (دقيقة)",
+  },
+  projectBased: {
+    emoji: "📂", name: "مشاريع طويلة الأمد",
+    orderLabel: "مشروع", customerLabel: "عميل", productLabel: "الخدمة/المشروع",
+    feeLabel: null, actionLabel: "تسليم",
+    tabMenu: "📂 الخدمات", tabOrders: "📂 المشاريع", tabCustomers: "👥 العملاء",
+    productPlaceholder: "مثال: تطوير نظام، بناء فيلا",
+    timeLabel: "⏱️ وقت التسليم المتوقع (دقيقة)",
+  },
+  courses: {
+    emoji: "🎓", name: "دورات تدريبية",
+    orderLabel: "تسجيل", customerLabel: "طالب", productLabel: "الدورة",
+    feeLabel: null, actionLabel: "تسجيل",
+    tabMenu: "🎓 الدورات", tabOrders: "📅 التسجيلات", tabCustomers: "👥 الطلاب",
+    productPlaceholder: "مثال: دورة تسويق، دورة برمجة",
+    timeLabel: "⏱️ مدة الدورة/اللقاء المتوقع (دقيقة)",
+  },
+  oneOnOne: {
+    emoji: "👨‍🏫", name: "جلسات فردية",
+    orderLabel: "حجز", customerLabel: "متدرب/عميل", productLabel: "الجلسة",
+    feeLabel: null, actionLabel: "موعد",
+    tabMenu: "👨‍🏫 الجلسات", tabOrders: "📅 المواعيد", tabCustomers: "👥 المتدربين",
+    productPlaceholder: "مثال: استشارة شخصية ساعة",
+    timeLabel: "⏱️ مدة الجلسة المتوقعة (دقيقة)",
+  },
+  rental: {
+    emoji: "🔑", name: "تأجير (سيارات، معدات)",
+    orderLabel: "حجز", customerLabel: "مستأجر", productLabel: "السلعة",
+    feeLabel: "رسوم التأجير", actionLabel: "تأجير",
+    tabMenu: "🔑 المعروض", tabOrders: "📅 الحجوزات", tabCustomers: "👥 المستأجرين",
+    productPlaceholder: "مثال: سيارة سيدان، كاميرا احترافية",
+    timeLabel: "⏱️ مدة التأجير المتوقعة (دقيقة)",
+  },
+  event: {
+    emoji: "🎉", name: "حجز فعاليات",
+    orderLabel: "حجز", customerLabel: "حاضر", productLabel: "التذكرة",
+    feeLabel: "رسوم التذكرة", actionLabel: "حضور",
+    tabMenu: "🎉 الفعاليات", tabOrders: "🎫 التذاكر", tabCustomers: "👥 الحاضرين",
+    productPlaceholder: "مثال: تذكرة حضور مؤتمر",
+    timeLabel: "⏱️ وقت البدء/المدة المتوقعة (دقيقة)",
+  },
+  subscription: {
+    emoji: "🔁", name: "اشتراكات متكررة",
+    orderLabel: "اشتراك", customerLabel: "مشترك", productLabel: "الباقة",
+    feeLabel: "رسوم الاشتراك", actionLabel: "تفعيل",
+    tabMenu: "🔁 الباقات", tabOrders: "📅 الاشتراكات", tabCustomers: "👥 المشتركين",
+    productPlaceholder: "مثال: باقة النادي الشهري",
+    timeLabel: "⏱️ مدة التفعيل المتوقعة (دقيقة)",
   },
 };
 
@@ -2621,12 +2738,18 @@ function applyBusinessLabels() {
   // الـ placeholder للمنتج في المودال
   const nameInput = document.getElementById("pm_name");
   if (nameInput) nameInput.placeholder = labels.productPlaceholder;
-  // حقل الرسوم
+  // حقل الرسوم ووقت التوصيل
   const feeField = document.getElementById("s_deliveryFeeRow");
   if (feeField) {
     feeField.style.display = labels.feeLabel ? "" : "none";
     const lbl = feeField.querySelector("label");
     if (lbl && labels.feeLabel) lbl.textContent = labels.feeLabel;
+  }
+  const timeField = document.getElementById("s_deliveryTimeRow");
+  if (timeField) {
+    timeField.style.display = ""; // Always show delivery/preparation time row!
+    const lbl = timeField.querySelector("label");
+    if (lbl) lbl.textContent = labels.timeLabel || "⏱️ وقت التوصيل المتوقع (دقيقة)";
   }
 }
 
@@ -3122,20 +3245,50 @@ async function deleteRecurring(id) {
   catch (e) { showToast(e.message || "فشل", "error"); }
 }
 
-// 📥 CSV export
-async function exportPnLCsv() {
+// 📥 P&L export
+async function exportPnL(format) {
   const ym = document.getElementById("accMonthPicker")?.value || new Date().toISOString().slice(0,7);
-  const tok = localStorage.getItem("store_token");
-  try {
-    const r = await fetch(`/store/accounting/monthly/${ym}/csv`, { headers: { "x-store-token": tok } });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `pnl-${ym}.csv`; a.click();
-    URL.revokeObjectURL(url);
-    showToast("✅ تم تنزيل الملف", "success");
-  } catch (e) { showToast("فشل: " + e.message, "error"); }
+  const tok = STORE_TOKEN || localStorage.getItem("store_token");
+  if (!tok) { showToast("⚠️ الجلسة منتهية", "error"); return; }
+  
+  if (format === "csv") {
+    try {
+      const r = await fetch(`/store/accounting/monthly/${ym}/csv`, { headers: { "x-store-token": tok } });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `pnl-${ym}.csv`; a.click();
+      URL.revokeObjectURL(url);
+      showToast("✅ تم تنزيل CSV", "success");
+    } catch (e) { showToast("فشل: " + e.message, "error"); }
+  } else if (format === "xlsx") {
+    try {
+      const r = await fetch(`/store/accounting/monthly/${ym}/xlsx`, { headers: { "x-store-token": tok } });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `pnl-${ym}.xls`; a.click();
+      URL.revokeObjectURL(url);
+      showToast("✅ تم تنزيل Excel", "success");
+    } catch (e) { showToast("فشل: " + e.message, "error"); }
+  } else if (format === "pdf") {
+    try {
+      const r = await fetch(`/store/accounting/monthly/${ym}/pdf.html`, { headers: { "x-store-token": tok } });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const html = await r.text();
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        showToast("📑 جاري فتح صفحة الطباعة — اختر PDF", "success");
+      } else {
+        showToast("⚠️ المتصفح حجب النافذة الجديدة — اسمح بالنوافذ المنبثقة", "error");
+      }
+    } catch (e) { showToast("فشل: " + e.message, "error"); }
+  }
 }
 
 function showAccSubTab(name) {
@@ -3665,6 +3818,116 @@ async function archiveCustomers() {
     showToast(`تمت الأرشفة: ${data.archived} عميل — المميزون: ${data.kept}`);
     loadCustomers();
   } catch { showToast("حدث خطأ في الأرشفة", true); }
+}
+
+async function exportCustomersAs(format) {
+  const tok = STORE_TOKEN || localStorage.getItem("store_token");
+  if (!tok) { showToast("⚠️ الجلسة منتهية — أعد تسجيل الدخول", "error"); doLogout?.(); return; }
+  try {
+    const r = await fetch("/store/customers", { headers: { "x-store-token": tok } });
+    const d = await r.json();
+    const customers = d.customers || [];
+    if (!customers.length) { showToast("لا توجد بيانات للتصدير", "warn"); return; }
+    
+    const currency = localStorage.getItem("store_currency") || "ر.س";
+    
+    if (format === "csv") {
+      const flat = customers.map(c => ({
+        الاسم: c.name, الهاتف: c.phone, الموقع: c.location,
+        عدد_الطلبات: c.ordersCount, الإجمالي: c.totalSpend, VIP: c.isVip ? "نعم" : "لا",
+        أول_طلب: c.firstOrder ? new Date(c.firstOrder).toLocaleDateString("ar-EG") : "—",
+        آخر_طلب: c.lastOrder ? new Date(c.lastOrder).toLocaleDateString("ar-EG") : "—",
+      }));
+      TwaniUX.exportCSV(flat, "customers");
+    } else if (format === "xlsx") {
+      const headers = ["الاسم", "الهاتف", "الموقع", "عدد الطلبات", `الإجمالي (${currency})`, "مميز (VIP)", "أول طلب", "آخر طلب"];
+      const rows = customers.map(c => [
+        c.name || "—",
+        c.phone || "—",
+        c.location || "—",
+        c.ordersCount || 0,
+        c.totalSpend || 0,
+        c.isVip ? "نعم" : "لا",
+        c.firstOrder ? new Date(c.firstOrder).toLocaleDateString("ar-EG") : "—",
+        c.lastOrder ? new Date(c.lastOrder).toLocaleDateString("ar-EG") : "—"
+      ]);
+      const thead = headers.map(h => `<th>${h}</th>`).join("");
+      const tbody = rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+      const html = `﻿<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8">
+<title>سجل العملاء</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background-color: #d9d9d9; font-weight: bold; text-align: right; padding: 8px; border: 1px solid #999; }
+  td { padding: 6px 8px; border: 1px solid #ccc; text-align: right; mso-number-format:"\\@"; }
+  caption { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+</style></head><body>
+<table dir="rtl">
+<caption>سجل العملاء للمتجر — ${new Date().toISOString().slice(0, 10)}</caption>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody}</tbody>
+</table></body></html>`;
+      const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `customers-${new Date().toISOString().slice(0, 10)}.xls`; a.click();
+      URL.revokeObjectURL(url);
+      showToast("✅ تم تنزيل Excel", "success");
+    } else if (format === "pdf") {
+      const headers = ["الاسم", "الهاتف", "الموقع", "الطلبات", "الإجمالي", "VIP", "آخر طلب"];
+      const rows = customers.map(c => [
+        c.name || "—",
+        c.phone || "—",
+        c.location || "—",
+        c.ordersCount || 0,
+        `${c.totalSpend || 0} ${currency}`,
+        c.isVip ? "★ نعم" : "لا",
+        c.lastOrder ? new Date(c.lastOrder).toLocaleDateString("ar-EG") : "—"
+      ]);
+      const thead = headers.map(h => `<th>${h}</th>`).join("");
+      const tbody = rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+      const printHtml = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>تقرير سجل العملاء</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; margin: 24px; color: #111827; }
+  .brand { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #1b5e20; padding-bottom: 10px; margin-bottom: 20px; }
+  .brand h1 { margin: 0; font-size: 22px; color: #1b5e20; }
+  .meta { font-size: 13px; color: #4b5563; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: right; }
+  th { background-color: #f3f4f6; font-weight: bold; }
+</style></head><body>
+<div class="brand">
+  <div>
+    <h1>تقرير سجل العملاء</h1>
+    <div class="meta">عدد العملاء: <b>${customers.length} عميل</b></div>
+  </div>
+  <div class="meta" style="text-align:left">تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}</div>
+</div>
+<table>
+  <thead><tr>${thead}</tr></thead>
+  <tbody>${tbody}</tbody>
+</table>
+<script>
+  window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });
+<\/script>
+</body></html>`;
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.open();
+        w.document.write(printHtml);
+        w.document.close();
+        showToast("📑 جاري فتح صفحة الطباعة — اختر PDF", "success");
+      } else {
+        showToast("⚠️ المتصفح حجب النافذة الجديدة — اسمح بالنوافذ المنبثقة", "error");
+      }
+    }
+  } catch (e) {
+    showToast("فشل التصدير: " + e.message, "error");
+  }
 }
 
 // ─── Load All ────────────────────────────────────────────────────────────────
@@ -4770,28 +5033,64 @@ const TK_PRIO = {
   low:    { label: "منخفضة", color: "#6b7280" },
 };
 
+let _TICKETS_FILTER = "active";
+let _TICKETS_STORE_NAME = "";
+let _TICKETS_STORE_PHONE = "";
+
+function setTicketFilter(f) {
+  _TICKETS_FILTER = f;
+  document.querySelectorAll("#tkFilterActive,#tkFilterResolved").forEach(b => b.classList.remove("active"));
+  const el = f === "active" ? document.getElementById("tkFilterActive") : document.getElementById("tkFilterResolved");
+  if (el) el.classList.add("active");
+  loadTickets();
+}
+
 async function loadTickets() {
   const box = document.getElementById("ticketsList");
   if (!box) return;
   try {
     const r = await api("GET", "/store/support/tickets");
     const list = r.items || [];
-    if (!list.length) {
+
+    // جلب بيانات المتجر (مرة واحدة)
+    if (!_TICKETS_STORE_NAME) {
+      try {
+        const prof = await api("GET", "/store/profile");
+        _TICKETS_STORE_NAME  = prof.store?.storeName  || "";
+        _TICKETS_STORE_PHONE = prof.store?.ownerPhone || prof.store?.phone || "";
+      } catch {}
+    }
+
+    // تحديث عدادات الفلتر
+    const activeList   = list.filter(t => ["open","in_progress"].includes(t.status));
+    const resolvedList = list.filter(t => ["resolved","closed"].includes(t.status));
+    const actEl = document.getElementById("tkActiveCount");
+    const resEl = document.getElementById("tkResolvedCount");
+    if (actEl) actEl.textContent = activeList.length > 0 ? `(${activeList.length})` : "";
+    if (resEl) resEl.textContent = resolvedList.length > 0 ? `(${resolvedList.length})` : "";
+
+    const filtered = _TICKETS_FILTER === "active" ? activeList : resolvedList;
+
+    if (!filtered.length) {
       box.innerHTML = `<div style="background:#fffbeb;border:1px dashed #fcd34d;border-radius:14px;padding:50px;text-align:center">
-        <div style="font-size:48px;margin-bottom:10px">🎫</div>
-        <h3 style="color:#78350f;margin:0 0 6px;font-size:17px">لا توجد تذاكر</h3>
-        <p style="color:#92400e;font-size:13px;margin:0">اضغط "تذكرة جديدة" لفتح أول تذكرة</p>
+        <div style="font-size:48px;margin-bottom:10px">${_TICKETS_FILTER === 'active' ? '🎉' : '🎫'}</div>
+        <h3 style="color:#78350f;margin:0 0 6px;font-size:17px">${_TICKETS_FILTER === 'active' ? 'لا توجد تذاكر نشطة — كل شيء تمام' : 'لا توجد تذاكر محلولة بعد'}</h3>
+        <p style="color:#92400e;font-size:13px;margin:0">${_TICKETS_FILTER === 'active' ? 'اضغط "تذكرة جديدة" لفتح أول تذكرة' : 'ستظهر التذاكر المحلولة هنا'}</p>
       </div>`;
       return;
     }
-    box.innerHTML = list.map(t => {
+    box.innerHTML = filtered.map(t => {
       const s = TK_STATUS[t.status] || TK_STATUS.open;
       const p = TK_PRIO[t.priority] || TK_PRIO.medium;
+      const storeInfo = (_TICKETS_STORE_NAME || _TICKETS_STORE_PHONE)
+        ? `<span style="color:#374151;font-weight:600">🏪 ${esc(_TICKETS_STORE_NAME)}</span>${_TICKETS_STORE_PHONE ? ` · <span dir="ltr">${esc(_TICKETS_STORE_PHONE)}</span>` : ''} ·`
+        : '';
       return `<div onclick="openTicketThread('${esc(t.id)}')" style="background:#fff;border:1px solid #e5e7eb;border-right:5px solid ${s.color};border-radius:11px;padding:13px 16px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:12px">
         <span style="font-size:22px">${s.icon}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;color:#111827;font-size:14.5px">${esc(t.subject)}</div>
           <div style="font-size:11.5px;color:#6b7280;margin-top:3px">
+            ${storeInfo}
             <span style="color:${s.color};font-weight:700">${s.label}</span> ·
             <span style="color:${p.color};font-weight:700">${p.label}</span> ·
             ${_tkAgo(t.updatedAt)}
@@ -4801,6 +5100,7 @@ async function loadTickets() {
     }).join("");
   } catch (e) { box.innerHTML = `<div style="text-align:center;color:#dc2626;padding:30px">فشل: ${esc(e.message||'')}</div>`; }
 }
+
 
 function _tkAgo(iso) {
   if (!iso) return "—";
@@ -5006,6 +5306,63 @@ async function doExportOrders() {
   } catch (e) {
     showToast("فشل: " + e.message, "error");
   }
+}
+
+// ═════════════ 📊 Export Orders (xlsx + pdf) ═════════════
+async function doExportOrdersAs(format) {
+  const from   = document.getElementById("expFrom").value;
+  const to     = document.getElementById("expTo").value;
+  const status = document.getElementById("expStatus").value;
+  const qs = new URLSearchParams();
+  if (from)   qs.set("from", from);
+  if (to)     qs.set("to", to);
+  if (status) qs.set("status", status);
+  const tok = STORE_TOKEN || localStorage.getItem("store_token");
+  if (!tok) { showToast("⚠️ الجلسة منتهية — أعد تسجيل الدخول", "error"); doLogout?.(); return; }
+
+  if (format === "pdf") {
+    // PDF: نفتح نافذة جديدة بصفحة طباعة
+    const url = "/store/orders/export.pdf.html?" + qs.toString() + "&_tok=" + encodeURIComponent(tok);
+    // نستخدم fetch لإضافة header المصادقة
+    try {
+      const r = await fetch("/store/orders/export.pdf.html?" + qs.toString(), {
+        headers: { "x-store-token": tok },
+      });
+      if (r.status === 401) { showToast("الجلسة منتهية", "error"); doLogout?.(); return; }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const html = await r.text();
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        closeExportOrdersModal();
+        showToast("📑 جاري فتح صفحة الطباعة — اختر PDF", "success");
+      } else {
+        showToast("⚠️ المتصفح حجب النافذة الجديدة — اسمح بالنوافذ المنبثقة", "error");
+      }
+    } catch (e) { showToast("فشل: " + e.message, "error"); }
+    return;
+  }
+
+  // xlsx: تنزيل ملف مباشرة
+  try {
+    const r = await fetch("/store/orders/export.xlsx?" + qs.toString(), {
+      headers: { "x-store-token": tok },
+    });
+    if (r.status === 401) { showToast("الجلسة منتهية", "error"); doLogout?.(); return; }
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob();
+    const url2 = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url2;
+    const today = new Date().toISOString().slice(0, 10);
+    a.download = `orders-${today}.xls`;
+    a.click();
+    URL.revokeObjectURL(url2);
+    closeExportOrdersModal();
+    showToast("✅ تم تنزيل Excel", "success");
+  } catch (e) { showToast("فشل: " + e.message, "error"); }
 }
 
 // ═════════════ 📦 Move Product to Category ═════════════
@@ -5562,17 +5919,29 @@ function _updateFilterCounts() {
   });
 }
 
-async function loadOrders() {
-  document.getElementById("ordersTable").innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>`;
+async function loadOrders(silent = false) {
+  if (!silent) {
+    document.getElementById("ordersTable").innerHTML = `<div class="empty-state"><div class="icon">⏳</div><p>جاري التحميل...</p></div>`;
+  }
   try {
     const { orders } = await api("GET", "/store/orders");
     _ORDERS_CACHE = orders || [];
     _updateFilterCounts();
     renderOrdersTable();
   } catch (e) {
-    document.getElementById("ordersTable").innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>فشل التحميل</p></div>`;
+    if (!silent) {
+      document.getElementById("ordersTable").innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>فشل التحميل</p></div>`;
+    }
   }
 }
+
+// تحديث صامت للطلبات كل 10 ثوانٍ إذا كان تبويب الطلبات مفتوحاً
+setInterval(() => {
+  const sec = document.getElementById("ordersSection");
+  if (sec && sec.style.display !== "none") {
+    loadOrders(true);
+  }
+}, 10000);
 
 function renderOrdersTable() {
   const orders = _ORDERS_CACHE.filter(o => _matchesFilter(o, _ORDERS_FILTER));
@@ -5934,6 +6303,7 @@ async function loadSettings() {
     document.getElementById("s_businessType").value   = store.businessType || "delivery";
     if (typeof applyBusinessLabels === "function") applyBusinessLabels();
     document.getElementById("s_deliveryFee").value    = store.deliveryFee ?? 10;
+    document.getElementById("s_deliveryTime").value   = store.avgDeliveryMin ?? "";
     toggleDeliveryFeeS();
     document.getElementById("s_start").value       = store.workingHoursStart ?? 0;
     document.getElementById("s_end").value         = store.workingHoursEnd ?? 24;
@@ -6080,6 +6450,7 @@ async function saveSettings() {
     currency:         val("s_currency","ر.س") || "ر.س",
     businessType:     val("s_businessType","delivery") || "delivery",
     deliveryFee:      parseFloat(val("s_deliveryFee","0")) || 0,
+    avgDeliveryMin:   parseInt(val("s_deliveryTime","")) || null,
     workingHoursStart:parseInt(val("s_start","0")) || 0,
     workingHoursEnd:  parseInt(val("s_end","24")) || 24,
     welcomeMessage:   String(val("s_welcome","")).trim(),

@@ -257,7 +257,11 @@ app.get("/health/deep", (_req, res) => {
 // يرجع آخر أحداث (طلبات اشتراك جديدة، طلبات بحاجة قبول)
 app.get("/api/master-notifications", (req, res) => {
   const t = req.headers["x-master-token"];
-  if (!safeEqualStrLocal(t, process.env.MASTER_PASSWORD || "")) {
+  const masterRouter = require("./master-router");
+  const isPassMatch = safeEqualStrLocal(t, process.env.MASTER_PASSWORD || "");
+  const isSessionMatch = typeof masterRouter.isValidSession === "function" && masterRouter.isValidSession(t);
+
+  if (!isPassMatch && !isSessionMatch) {
     return res.status(401).json({ error: "غير مصرح" });
   }
   const sinceTs = parseInt(req.query.since) || 0;
@@ -830,6 +834,7 @@ function businessLabels(btype) {
 // ─── Pending Rating Requests ──────────────────────────────────────────────────
 // phone → { storeId, orderId, storeName, timer }
 const pendingRatings = new Map();
+global.pendingRatings = pendingRatings;
 
 // ─── Message Deduplication ────────────────────────────────────────────────────
 const _seenMsgIds = new Map();
@@ -1452,6 +1457,9 @@ async function handleOwnerCommand(from, text, store, storeId) {
         if (o.orderId === order.orderId) {
           o.status = "confirmed";
           o.statusUpdatedAt = stamp;
+          if (store?.avgDeliveryMin) {
+            o.estimatedMinutes = Number(store.avgDeliveryMin);
+          }
         }
         return JSON.stringify(o);
       });
@@ -1460,8 +1468,11 @@ async function handleOwnerCommand(from, text, store, storeId) {
       // أبلغ العميل
       const pointsLine = (earned && earned.newPoints > 0)
         ? `\n🏆 كسبت *${earned.newPoints}* نقطة! رصيدك: *${earned.totalPoints}*\n` : "";
+      const etaLine = store?.avgDeliveryMin ? `⏱️ الوقت المتوقع: *${store.avgDeliveryMin} دقيقة* تقريباً\n` : "";
       const confirmMsg =
-        `✅ *تم تأكيد طلبك!*\n\nرقم الطلب: *${order.orderId}*\n` + pointsLine +
+        `✅ *تم تأكيد طلبك!*\n\nرقم الطلب: *${order.orderId}*\n` +
+        etaLine +
+        pointsLine +
         `سيتم توصيل طلبك قريباً 🚴\n\nشكراً لاختيارك *${store?.storeName || ""}*`;
       try {
         await waMgr.sendMessage(storeId, order.customerPhone, confirmMsg);
@@ -1529,17 +1540,18 @@ async function handleOwnerCommand(from, text, store, storeId) {
         const ratingMsg =
           `✅ *تم تسليم طلبك بنجاح!*\n\n` +
           `شكراً لاختيارك *${store?.storeName || ""}* 🙏\n\n` +
-          `كيف تقيّم تجربتك معنا؟\n\n` +
-          `*1* — ⭐ سيء\n` +
-          `*2* — ⭐⭐ مقبول\n` +
-          `*3* — ⭐⭐⭐ جيد\n` +
-          `*4* — ⭐⭐⭐⭐ ممتاز\n` +
-          `*5* — ⭐⭐⭐⭐⭐ رائع جداً 🔥\n\n` +
-          `_اكتب رقم التقييم (من 1 إلى 5)_`;
+          `كيف تقيّم تجربتك معنا؟ ⭐\n\n` +
+          `*1* — ⭐\n` +
+          `*2* — ⭐⭐\n` +
+          `*3* — ⭐⭐⭐\n` +
+          `*4* — ⭐⭐⭐⭐\n` +
+          `*5* — ⭐⭐⭐⭐⭐\n\n` +
+          `_اكتب رقم التقييم المناسب لك (من 1 إلى 5) 👇_`;
         try { await waMgr.sendMessage(storeId, order.customerPhone, ratingMsg); } catch {}
+        const reminderTimer = scheduleRatingReminder(order.customerPhone, storeId, store?.storeName || "", order.orderId);
         pendingRatings.set(order.customerPhone, {
           storeId, orderId: order.orderId, storeName: store?.storeName || "", store,
-          timer: null, reminderTimer: null,
+          timer: null, reminderTimer,
         });
       }
       const statusLabels = {
@@ -1631,7 +1643,14 @@ async function handleMessage(from, incoming) {
       const sup = String(settings.supportPhone || "").replace(/\D/g, "");
       if (sup) otherOwners.add(sup);
     } catch {}
-    if (customerPhone && otherOwners.has(customerPhone)) {
+    let isOtherOwner = false;
+    for (const op of otherOwners) {
+      if (isSamePhone(customerPhone, op)) {
+        isOtherOwner = true;
+        break;
+      }
+    }
+    if (customerPhone && isOtherOwner) {
       console.warn(`[loop-guard] [${storeId}] ignoring message from system phone ${customerPhone.slice(0,6)}***`);
       return;
     }
@@ -1644,8 +1663,7 @@ async function handleMessage(from, incoming) {
   } catch (e) { console.warn("[loop-guard] failed:", e.message); }
 
   // 🎛️ Owner commands من واتساب: قبول/رفض/جاهز/خرج/تم — للمالك فقط
-  const ownerPhoneClean = String(store?.ownerPhone || "").replace(/\D/g, "");
-  if (ownerPhoneClean && customerPhone === ownerPhoneClean) {
+  if (store?.ownerPhone && isSamePhone(customerPhone, store.ownerPhone)) {
     const result = await handleOwnerCommand(from, String(incoming || "").trim(), store, storeId);
     if (result === true) return; // الأمر تمت معالجته
     // result === false → استكمل الـ flow الطبيعي (المالك يطلب من متجره نفسه)
@@ -3794,30 +3812,34 @@ async function handleConfirmOrder(from, msg, session) {
     const { calcPoints } = require("./loyalty");
     const previewPoints = calcPoints(session.grandTotal, store);
 
-    // ⏱ ETA ذكي: حسب workflow + متوسط timing من الطلبات السابقة
+    // ⏱ ETA ذكي: حسب settings أو متوسط timing من الطلبات السابقة
     let etaText = "";
     try {
-      const btype = getBusinessType(store);
-      const baseEta = btype === "pickup" ? 20 : btype === "homeService" ? 60 : 35;
-      // اقرأ متوسط ووقت معالجة آخر 20 طلب مكتمل
-      const ordersFile = storeId === "nakheel_001"
-        ? path.join(DATA_DIR, "orders.jsonl")
-        : path.join(DATA_DIR, `orders_${storeId}.jsonl`);
-      if (fs.existsSync(ordersFile)) {
-        const recent = fs.readFileSync(ordersFile, "utf8").split("\n").filter(Boolean)
-          .slice(-200).map(l => { try { return JSON.parse(l); } catch { return null; } })
-          .filter(o => o && (o.status === "completed" || o.status === "delivered") && o.timestamp && o.deliveredAt);
-        if (recent.length >= 3) {
-          const avg = recent.slice(-10).reduce((s, o) =>
-            s + (new Date(o.deliveredAt) - new Date(o.timestamp)) / 60_000, 0) / Math.min(recent.length, 10);
-          if (avg >= 5 && avg <= 180) {
-            const low = Math.max(10, Math.round(avg * 0.8 / 5) * 5);
-            const high = Math.round(avg * 1.2 / 5) * 5;
-            etaText = `⏱ المدة المتوقعة: *${low}-${high} دقيقة*\n`;
+      if (store?.avgDeliveryMin) {
+        etaText = `⏱ المدة المتوقعة: *${store.avgDeliveryMin} دقيقة*\n`;
+      } else {
+        const btype = getBusinessType(store);
+        const baseEta = btype === "pickup" ? 20 : btype === "homeService" ? 60 : 35;
+        // اقرأ متوسط ووقت معالجة آخر 20 طلب مكتمل
+        const ordersFile = storeId === "nakheel_001"
+          ? path.join(DATA_DIR, "orders.jsonl")
+          : path.join(DATA_DIR, `orders_${storeId}.jsonl`);
+        if (fs.existsSync(ordersFile)) {
+          const recent = fs.readFileSync(ordersFile, "utf8").split("\n").filter(Boolean)
+            .slice(-200).map(l => { try { return JSON.parse(l); } catch { return null; } })
+            .filter(o => o && (o.status === "completed" || o.status === "delivered") && o.timestamp && o.deliveredAt);
+          if (recent.length >= 3) {
+            const avg = recent.slice(-10).reduce((s, o) =>
+              s + (new Date(o.deliveredAt) - new Date(o.timestamp)) / 60_000, 0) / Math.min(recent.length, 10);
+            if (avg >= 5 && avg <= 180) {
+              const low = Math.max(10, Math.round(avg * 0.8 / 5) * 5);
+              const high = Math.round(avg * 1.2 / 5) * 5;
+              etaText = `⏱ المدة المتوقعة: *${low}-${high} دقيقة*\n`;
+            }
           }
         }
+        if (!etaText) etaText = `⏱ المدة المتوقعة: *${baseEta-10}-${baseEta+10} دقيقة*\n`;
       }
-      if (!etaText) etaText = `⏱ المدة المتوقعة: *${baseEta-10}-${baseEta+10} دقيقة*\n`;
     } catch {}
 
     await sendText(from,
@@ -4182,6 +4204,20 @@ function truncate(str, max) {
 // Strip WhatsApp JID suffixes for display/storage — keeps full JID for sending
 function phoneNum(jid) {
   return (jid || "").replace(/@s\.whatsapp\.net|@lid/g, "");
+}
+
+// Compare phone numbers robustly (comparing suffixes/last 9 digits to handle country code differences)
+function isSamePhone(phone1, phone2) {
+  if (!phone1 || !phone2) return false;
+  const p1 = String(phone1).replace(/\D/g, "");
+  const p2 = String(phone2).replace(/\D/g, "");
+  if (!p1 || !p2) return false;
+  if (p1 === p2) return true;
+  // If one starts with country code and the other does not, compare last 9 digits (covers Saudi, UAE, etc.)
+  if (p1.length >= 9 && p2.length >= 9) {
+    return p1.slice(-9) === p2.slice(-9);
+  }
+  return false;
 }
 
 // ─── Baileys Message Router ───────────────────────────────────────────────────
@@ -4768,31 +4804,33 @@ app.get(["/order/:token", "/o/:token", "/:token([a-zA-Z0-9]{4,12})"], (req, res)
     }
   } catch {}
   // وقت التوصيل المتوقع: avg من completed orders آخر 30 يوم (لو فيه delivery time tracked)
-  let avgDeliveryMin = null;
-  try {
-    const ordersFile = storeId === "nakheel_001"
-      ? path.join(__dirname, "..", "data", "orders.jsonl")
-      : path.join(__dirname, "..", "data", `orders_${storeId}.jsonl`);
-    if (fs.existsSync(ordersFile)) {
-      const cutoff = Date.now() - 30 * 86400_000;
-      const times = [];
-      for (const l of fs.readFileSync(ordersFile, "utf8").split("\n")) {
-        if (!l) continue;
-        try {
-          const o = JSON.parse(l);
-          const ts = new Date(o.timestamp || o.createdAt || 0).getTime();
-          if (ts < cutoff) continue;
-          if (o.deliveredAt && o.timestamp) {
-            const min = (new Date(o.deliveredAt) - new Date(o.timestamp)) / 60000;
-            if (min > 0 && min < 240) times.push(min);
-          }
-        } catch {}
+  let avgDeliveryMin = store?.avgDeliveryMin || null;
+  if (!avgDeliveryMin) {
+    try {
+      const ordersFile = storeId === "nakheel_001"
+        ? path.join(__dirname, "..", "data", "orders.jsonl")
+        : path.join(__dirname, "..", "data", `orders_${storeId}.jsonl`);
+      if (fs.existsSync(ordersFile)) {
+        const cutoff = Date.now() - 30 * 86400_000;
+        const times = [];
+        for (const l of fs.readFileSync(ordersFile, "utf8").split("\n")) {
+          if (!l) continue;
+          try {
+            const o = JSON.parse(l);
+            const ts = new Date(o.timestamp || o.createdAt || 0).getTime();
+            if (ts < cutoff) continue;
+            if (o.deliveredAt && o.timestamp) {
+              const min = (new Date(o.deliveredAt) - new Date(o.timestamp)) / 60000;
+              if (min > 0 && min < 240) times.push(min);
+            }
+          } catch {}
+        }
+        if (times.length >= 3) {
+          avgDeliveryMin = Math.round(times.reduce((s,x)=>s+x,0) / times.length);
+        }
       }
-      if (times.length >= 3) {
-        avgDeliveryMin = Math.round(times.reduce((s,x)=>s+x,0) / times.length);
-      }
-    }
-  } catch {}
+    } catch {}
+  }
 
   // عدد طلبات اليوم (trust signal)
   let ordersTodayCount = 0;

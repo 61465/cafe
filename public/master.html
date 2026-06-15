@@ -1045,12 +1045,17 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
 
     <!-- ── Stores View ── -->
     <section id="storesView" style="display:none">
-      <div class="page-header">
+      <div class="page-header" style="flex-wrap:wrap;gap:12px">
         <div>
           <h1>إدارة المتاجر</h1>
           <div class="sub" id="storesCount"></div>
         </div>
-        <button class="btn btn-primary" onclick="openStoreModal()">➕ إضافة متجر</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="exportStores('csv')">📋 CSV</button>
+          <button class="btn btn-outline" onclick="exportStores('xlsx')">📊 Excel</button>
+          <button class="btn btn-outline" onclick="exportStores('pdf')">📑 PDF</button>
+          <button class="btn btn-primary" onclick="openStoreModal()">➕ إضافة متجر</button>
+        </div>
       </div>
 
       <div class="card" style="padding:0">
@@ -1518,7 +1523,12 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
     <section id="pendingView" style="display:none">
       <div class="page-header">
         <div><h1>📥 طلبات الاشتراك</h1><div class="sub">طلبات من صفحة التسجيل — راجع وافق أو ارفض</div></div>
-        <button class="btn btn-sm btn-outline" onclick="loadPending()">🔄 تحديث</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="exportPending('csv')">📋 CSV</button>
+          <button class="btn btn-sm btn-outline" onclick="exportPending('xlsx')">📊 Excel</button>
+          <button class="btn btn-sm btn-outline" onclick="exportPending('pdf')">📑 PDF</button>
+          <button class="btn btn-sm btn-outline" onclick="loadPending()">🔄 تحديث</button>
+        </div>
       </div>
       <div class="card">
         <div style="padding:14px 16px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -3104,7 +3114,7 @@ function supTkRenderList(items) {
           <span>·</span>
           <span>📁 ${supTkCatName(t.category)}</span>
           <span>·</span>
-          <span>🏪 <code style="background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:10px">${esc(t.storeId || "—")}</code></span>
+          <span>🏪 <code style="background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:10px">${esc(t.storeId || "—")}</code>${t.storeName ? ` <b style="color:#374151">${esc(t.storeName)}</b>` : ""}${t.ownerPhone ? ` · <span dir="ltr" style="color:#6b7280">${esc(t.ownerPhone)}</span>` : ""}</span>
           <span>·</span>
           <span>🕐 ${supTkAgo(t.updatedAt)}</span>
         </div>
@@ -3155,7 +3165,7 @@ async function supTkOpen(id) {
             <span style="font-size:11px;color:#6b7280">· ${supTkCatName(t.category)}</span>
           </div>
           <div style="font-size:17px;font-weight:900;color:#111827">${esc(t.subject)}</div>
-          <div style="font-size:11px;color:#6b7280;margin-top:3px">المتجر: <code style="background:#f3f4f6;padding:1px 6px;border-radius:4px">${esc(t.storeId)}</code> · فُتحت: ${new Date(t.createdAt).toLocaleString("ar-EG")}</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:3px">المتجر: <code style="background:#f3f4f6;padding:1px 6px;border-radius:4px">${esc(t.storeId)}</code>${t.storeName ? ` · <b style="color:#374151">${esc(t.storeName)}</b>` : ""}${t.ownerPhone ? ` · <span dir="ltr">${esc(t.ownerPhone)}</span>` : ""} · فُتحت: ${new Date(t.createdAt).toLocaleString("ar-EG")}</div>
         </div>
         <button onclick="supTkCloseModal()" style="background:#fff;border:1px solid #e5e7eb;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
       </div>
@@ -3204,7 +3214,8 @@ async function supTkSendReply(id) {
 async function supTkChangeStatus(id, status) {
   try {
     await api("POST", `/master/support/tickets/${id}/status`, { status });
-    supTkLoad();
+    await supTkOpen(id); // Re-render the modal to show the updated status & badge!
+    supTkLoad();        // Refresh the background list
   } catch (e) {
     alert("فشل تغيير الحالة: " + (e?.error || e?.message || ""));
   }
@@ -4225,25 +4236,182 @@ window.addEventListener("load", function() {
   });
 
   // export pending requests
-  window.exportPendingCSV = async function() {
+  window.exportPending = async function(format) {
     try {
       const r = await fetch("/master/pending-requests", { headers: { "x-master-token": tok } });
       const d = await r.json();
-      TwaniUX.exportCSV(d.requests || [], "pending-requests");
+      const requests = d.requests || [];
+      if (!requests.length) { TwaniUX.toast("لا توجد بيانات للتصدير", "warn"); return; }
+
+      if (format === "csv") {
+        TwaniUX.exportCSV(requests, "pending-requests");
+      } else if (format === "xlsx") {
+        const headers = ["المعرف", "اسم المتجر", "اسم المالك", "رقم الجوال", "البريد الإلكتروني", "المدينة", "نوع النشاط", "الباقة المطلوبة", "الحالة", "تاريخ الطلب"];
+        const rows = requests.map(req => [
+          req.id, req.storeName, req.ownerName, req.phone, req.email, req.city, req.storeType, req.plan, req.status, req.createdAt ? new Date(req.createdAt).toLocaleDateString("ar-EG") : "—"
+        ]);
+        const thead = headers.map(h => `<th>${h}</th>`).join("");
+        const tbody = rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+        const html = `﻿<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8">
+<title>طلبات الاشتراك المعلقة</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background-color: #d9d9d9; font-weight: bold; text-align: right; padding: 8px; border: 1px solid #999; }
+  td { padding: 6px 8px; border: 1px solid #ccc; text-align: right; mso-number-format:"\\@"; }
+  caption { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+</style></head><body>
+<table dir="rtl">
+<caption>طلبات الاشتراك المعلقة — ${new Date().toISOString().slice(0, 10)}</caption>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody}</tbody>
+</table></body></html>`;
+        const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `pending-requests-${new Date().toISOString().slice(0, 10)}.xls`; a.click();
+        URL.revokeObjectURL(url);
+        TwaniUX.toast("✅ تم تنزيل Excel", "success");
+      } else if (format === "pdf") {
+        const printHtml = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>تقرير طلبات الاشتراك المعلقة</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; margin: 24px; color: #111827; }
+  .brand { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #1b5e20; padding-bottom: 10px; margin-bottom: 20px; }
+  .brand h1 { margin: 0; font-size: 22px; color: #1b5e20; }
+  .meta { font-size: 13px; color: #4b5563; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: right; font-size: 12px; }
+  th { background-color: #f3f4f6; font-weight: bold; }
+</style></head><body>
+<div class="brand">
+  <div>
+    <h1>تقرير طلبات الاشتراك المعلقة</h1>
+    <div class="meta">عدد الطلبات: <b>${requests.length} طلب</b></div>
+  </div>
+  <div class="meta" style="text-align:left">تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}</div>
+</div>
+<table>
+  <thead>
+    <tr><th>المعرف</th><th>اسم المتجر</th><th>اسم المالك</th><th>الجوال</th><th>المدينة</th><th>النشاط</th><th>الباقة</th><th>الحالة</th>
+  </thead>
+  <tbody>
+    ${requests.map(r => `<tr>
+      <td>${r.id}</td><td>${r.storeName||""}</td><td>${r.ownerName||""}</td><td dir="ltr">${r.phone||""}</td><td>${r.city||""}</td><td>${r.storeType||""}</td><td>${r.plan||""}</td><td>${r.status||""}</td>
+    </tr>`).join("")}
+  </tbody>
+</table>
+<script>
+  window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });
+</script>
+</body></html>`;
+        const w = window.open("", "_blank");
+        if (w) {
+          w.document.open();
+          w.document.write(printHtml);
+          w.document.close();
+          TwaniUX.toast("📑 جاري فتح صفحة الطباعة — اختر PDF", "success");
+        } else {
+          TwaniUX.toast("⚠️ المتصفح حجب النافذة الجديدة", "error");
+        }
+      }
     } catch (e) { TwaniUX.toast("فشل التصدير", "error"); }
   };
-  window.exportStoresCSV = async function() {
+
+  window.exportStores = async function(format) {
     try {
       const r = await fetch("/master/stores", { headers: { "x-master-token": tok } });
       const d = await r.json();
-      const flat = (d.stores || []).map(s => ({
-        المعرّف: s.id, الاسم: s.storeName, النوع: s.storeType, المدينة: s.city,
-        المالك: s.ownerName, الهاتف: s.ownerPhone, الباقة: s.plan,
-        الحالة: s.subscriptionStatus, الرسوم: s.subscriptionFee,
-        تاريخ_الاشتراك: s.subscriptionStartDate, التجديد: s.subscriptionNextPayment,
-        الطلبات_الكلية: s.ordersTotal, طلبات_اليوم: s.ordersToday,
-      }));
-      TwaniUX.exportCSV(flat, "stores");
+      const stores = d.stores || [];
+      if (!stores.length) { TwaniUX.toast("لا توجد بيانات للتصدير", "warn"); return; }
+
+      if (format === "csv") {
+        const flat = stores.map(s => ({
+          المعرّف: s.id, الاسم: s.storeName, النوع: s.storeType, المدينة: s.city,
+          المالك: s.ownerName, الهاتف: s.ownerPhone, الباقة: s.plan,
+          الحالة: s.subscriptionStatus, الرسوم: s.subscriptionFee,
+          تاريخ_الاشتراك: s.subscriptionStartDate, التجديد: s.subscriptionNextPayment,
+          الطلبات_الكلية: s.ordersTotal, طلبات_اليوم: s.ordersToday,
+        }));
+        TwaniUX.exportCSV(flat, "stores");
+      } else if (format === "xlsx") {
+        const headers = ["المعرّف", "الاسم", "النوع", "المدينة", "المالك", "الهاتف", "الباقة", "الحالة", "الرسوم", "تاريخ الاشتراك", "التجديد", "الطلبات الكلية", "طلبات اليوم"];
+        const rows = stores.map(s => [
+          s.id, s.storeName, s.storeType, s.city, s.ownerName, s.ownerPhone, s.plan, s.subscriptionStatus, s.subscriptionFee, s.subscriptionStartDate, s.subscriptionNextPayment, s.ordersTotal, s.ordersToday
+        ]);
+        const thead = headers.map(h => `<th>${h}</th>`).join("");
+        const tbody = rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+        const html = `﻿<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8">
+<title>قائمة المتاجر</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background-color: #d9d9d9; font-weight: bold; text-align: right; padding: 8px; border: 1px solid #999; }
+  td { padding: 6px 8px; border: 1px solid #ccc; text-align: right; mso-number-format:"\\@"; }
+  caption { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+</style></head><body>
+<table dir="rtl">
+<caption>قائمة المتاجر للمنصة — ${new Date().toISOString().slice(0, 10)}</caption>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody}</tbody>
+</table></body></html>`;
+        const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `stores-${new Date().toISOString().slice(0, 10)}.xls`; a.click();
+        URL.revokeObjectURL(url);
+        TwaniUX.toast("✅ تم تنزيل Excel", "success");
+      } else if (format === "pdf") {
+        const printHtml = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>تقرير قائمة المتاجر</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; margin: 24px; color: #111827; }
+  .brand { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 20px; }
+  .brand h1 { margin: 0; font-size: 22px; color: #1e3a8a; }
+  .meta { font-size: 13px; color: #4b5563; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: right; font-size: 12px; }
+  th { background-color: #f3f4f6; font-weight: bold; }
+</style></head><body>
+<div class="brand">
+  <div>
+    <h1>إدارة المتاجر - تقرير المنصة</h1>
+    <div class="meta">إجمالي المتاجر: <b>${stores.length} متجر</b></div>
+  </div>
+  <div class="meta" style="text-align:left">تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}</div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>المعرف</th><th>اسم المتجر</th><th>المالك</th><th>الهاتف</th><th>الباقة</th><th>الحالة</th><th>تاريخ الاشتراك</th><th>الطلبات</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${stores.map(s => `<tr>
+      <td>${s.id}</td><td>${s.storeName||""}</td><td>${s.ownerName||""}</td><td dir="ltr">${s.ownerPhone||""}</td><td>${s.plan||""}</td><td>${s.subscriptionStatus||""}</td><td>${s.subscriptionStartDate||""}</td><td>${s.ordersTotal||0}</td>
+    </tr>`).join("")}
+  </tbody>
+</table>
+<script>
+  window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });
+</script>
+</body></html>`;
+        const w = window.open("", "_blank");
+        if (w) {
+          w.document.open();
+          w.document.write(printHtml);
+          w.document.close();
+          TwaniUX.toast("📑 جاري فتح صفحة الطباعة — اختر PDF", "success");
+        } else {
+          TwaniUX.toast("⚠️ المتصفح حجب النافذة الجديدة", "error");
+        }
+      }
     } catch (e) { TwaniUX.toast("فشل التصدير", "error"); }
   };
 });

@@ -122,7 +122,7 @@ test("_safeJSON يحافظ على JSON صحيح بعد escape", () => {
 
 // ─── 4. bcrypt ──────────────────────────────────────────────────────────
 console.log("\n📦 bcrypt");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 
 test("bcrypt: hash + compare", async () => {
   const pass = "TestPassword123!";

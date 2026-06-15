@@ -358,6 +358,20 @@ function auth(req, res, next) {
   next();
 }
 
+function isValidSession(token) {
+  if (!token) return false;
+  const ts = sessions.get(token);
+  if (ts === undefined) return false;
+  if (Date.now() - ts > MASTER_SESSION_TTL_MS) {
+    sessions.delete(token);
+    _saveMasterSessions();
+    return false;
+  }
+  sessions.set(token, Date.now());
+  _saveMasterSessions();
+  return true;
+}
+
 // ─── Master Credentials (bcrypt في ملف منفصل) ──────────────────────────────
 const MASTER_CRED_FILE = path.join(DATA_DIR, "master-credentials.json");
 
@@ -664,19 +678,31 @@ router.get("/master/financial", auth, (_req, res) => {
 
 // ─── Plans list ───────────────────────────────────────────────────────────────
 // ═════ 🎫 Support Tickets (master side) + 📈 Analytics ═══════════════════
-router.get("/master/support/tickets", auth, (req, res) => {
-  const t = require("./support-tickets");
-  res.json({
-    items: t.listAll({ status: req.query.status, priority: req.query.priority, storeId: req.query.storeId }),
-  });
+router.get("/master/support/tickets", auth, async (req, res) => {
+  try {
+    const t = require("./support-tickets");
+    const items = await t.listAll({ status: req.query.status, priority: req.query.priority, storeId: req.query.storeId });
+    res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
-router.get("/master/support/tickets/stats", auth, (_req, res) => {
-  res.json(require("./support-tickets").getStats());
+router.get("/master/support/tickets/stats", auth, async (_req, res) => {
+  try {
+    const stats = await require("./support-tickets").getStats();
+    res.json(stats);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
-router.get("/master/support/tickets/:id", auth, (req, res) => {
-  const t = require("./support-tickets").getTicket(req.params.id);
-  if (!t) return res.status(404).json({ error: "غير موجود" });
-  res.json({ ticket: t });
+router.get("/master/support/tickets/:id", auth, async (req, res) => {
+  try {
+    const t = await require("./support-tickets").getTicket(req.params.id);
+    if (!t) return res.status(404).json({ error: "غير موجود" });
+    res.json({ ticket: t });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 router.post("/master/support/tickets/:id/reply", auth, (req, res) => {
   const tk = require("./support-tickets");
@@ -1656,3 +1682,4 @@ module.exports.readOwnerSettings = readOwnerSettings;
 module.exports.DEFAULT_WELCOME_TEMPLATE = DEFAULT_WELCOME_TEMPLATE;
 module.exports.DEFAULT_WELCOME_NO_LINK  = DEFAULT_WELCOME_NO_LINK;
 module.exports.WELCOME_PRESETS = WELCOME_PRESETS;
+module.exports.isValidSession = isValidSession;

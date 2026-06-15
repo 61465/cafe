@@ -126,7 +126,8 @@ function readOrders(storeId) {
 
 // ─── Auth middleware (sliding TTL — تجدّد عند كل طلب) ───────────────────────
 function auth(req, res, next) {
-  const token = req.headers["x-store-token"];
+  // يدعم header الأساسي + fallback لـ query token (للتنزيلات المباشرة كـ Excel/PDF)
+  const token = req.headers["x-store-token"] || (req.query && req.query.token) || null;
   const entry = sessions.get(token);
   if (!token || !entry) return res.status(401).json({ error: "يرجى تسجيل الدخول" });
   const lastSeen = entry.lastActivity || entry.createdAt;
@@ -882,6 +883,7 @@ const SETTING_VALIDATORS = {
   enableNumeric:      v => v !== false && v !== "false",
   enableAI:           v => v !== false && v !== "false",
   enableCoupons:      v => v !== false && v !== "false",
+  avgDeliveryMin:     v => { if (v === null || v === "" || v === undefined) return null; const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 && n <= 300 ? n : null; },
 };
 
 router.put("/store/settings", auth, (req, res) => {
@@ -1600,18 +1602,26 @@ router.get("/store/support/tickets", auth, (req, res) => {
   const t = require("./support-tickets");
   res.json({ items: t.listForStore(req.storeId, { status: req.query.status }) });
 });
-router.get("/store/support/tickets/:id", auth, (req, res) => {
-  const t = require("./support-tickets").getTicket(req.params.id);
-  if (!t || t.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
-  res.json({ ticket: t });
+router.get("/store/support/tickets/:id", auth, async (req, res) => {
+  try {
+    const t = await require("./support-tickets").getTicket(req.params.id);
+    if (!t || t.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
+    res.json({ ticket: t });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
-router.post("/store/support/tickets/:id/reply", auth, (req, res) => {
-  const tk = require("./support-tickets");
-  const existing = tk.getTicket(req.params.id);
-  if (!existing || existing.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
-  const updated = tk.replyToTicket(req.params.id, { from: "store", message: req.body?.message });
-  audit({ actor: { type: "store", id: req.storeId }, action: "support.reply", target: { type: "ticket", id: req.params.id } }, req);
-  res.json({ ok: true, ticket: updated });
+router.post("/store/support/tickets/:id/reply", auth, async (req, res) => {
+  try {
+    const tk = require("./support-tickets");
+    const existing = await tk.getTicket(req.params.id);
+    if (!existing || existing.storeId !== req.storeId) return res.status(404).json({ error: "غير موجود" });
+    const updated = tk.replyToTicket(req.params.id, { from: "store", message: req.body?.message });
+    audit({ actor: { type: "store", id: req.storeId }, action: "support.reply", target: { type: "ticket", id: req.params.id } }, req);
+    res.json({ ok: true, ticket: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ═════ 🔔 Notifications Inbox ═════════════════════════════════════════════
@@ -1686,6 +1696,157 @@ router.get("/store/orders/export.csv", auth, (req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="orders-${req.storeId}-${today}.csv"`);
   res.send(csv);
+});
+
+// ─── Helpers مشتركة لتصدير الطلبات (Excel + PDF) ───────────────────────────
+function _exportFilterOrders(storeId, q) {
+  const orders = readOrders(storeId).filter(o => !o._test);
+  const from   = q.from || "";
+  const to     = q.to   || "";
+  const status = q.status && q.status !== "all" ? q.status : null;
+  return orders.filter(o => {
+    const d = (o.timestamp || "").slice(0, 10);
+    if (from && d < from) return false;
+    if (to   && d > to)   return false;
+    if (status && o.status !== status) return false;
+    return true;
+  });
+}
+function _exportRows(filtered) {
+  const maskPhone = (p) => {
+    const s = String(p || "").replace(/\D/g, "");
+    return s.length >= 4 ? s.slice(0, -4) + "****" : s;
+  };
+  const headers = [
+    "رقم الطلب","التاريخ","الوقت","العميل","رقم العميل (مخفي جزئياً)","العنوان",
+    "المنتجات","المجموع","رسوم التوصيل","الخصم","الإجمالي","العملة",
+    "الحالة","الوقت المطلوب","المدة المتوقعة (د)","ملاحظات","إجابات الأسئلة","سبب الرفض"
+  ];
+  const rows = filtered.map(o => [
+    o.orderId || "",
+    (o.timestamp || "").slice(0, 10),
+    (o.timestamp || "").slice(11, 16),
+    o.customerName || "",
+    maskPhone(o.customerPhone),
+    (o.customerLocationName || o.customerLocation || "").replace(/\(📍\s*https?:\/\/[^\)]+\)/g, "").trim(),
+    (o.items || []).map(i => `${i.name}×${i.qty}`).join("؛ "),
+    o.subtotal || 0,
+    o.deliveryFee || 0,
+    o.discount || 0,
+    o.total || 0,
+    o.currency || "ر.س",
+    o.status || "",
+    o.scheduledTime || "",
+    o.estimatedMinutes || "",
+    o.notes || o.orderNotes || "",
+    o.customAnswers ? JSON.stringify(o.customAnswers) : "",
+    o.rejectReason || o.cancelReason || "",
+  ]);
+  return { headers, rows };
+}
+function _htmlEsc(v) {
+  if (v === null || v === undefined) return "";
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// 📊 GET /store/orders/export.xlsx — تصدير Excel-HTML (يفتح كـ .xls في Excel)
+router.get("/store/orders/export.xlsx", auth, (req, res) => {
+  const filtered = _exportFilterOrders(req.storeId, req.query);
+  const { headers, rows } = _exportRows(filtered);
+  const today = new Date().toISOString().slice(0, 10);
+  const thead = headers.map(h => `<th>${_htmlEsc(h)}</th>`).join("");
+  const tbody = rows.map(r => `<tr>${r.map(c => `<td>${_htmlEsc(c)}</td>`).join("")}</tr>`).join("");
+  const html = `﻿<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8">
+<title>طلبات ${_htmlEsc(req.storeId)} - ${today}</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background-color: #d9d9d9; font-weight: bold; text-align: right; padding: 8px; border: 1px solid #999; }
+  td { padding: 6px 8px; border: 1px solid #ccc; text-align: right; mso-number-format:"\\@"; }
+  caption { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+</style></head><body>
+<table dir="rtl">
+<caption>طلبات المتجر — ${_htmlEsc(req.storeId)} — ${today} (${rows.length} طلب)</caption>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody}</tbody>
+</table></body></html>`;
+  res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="orders-${req.storeId}-${today}.xls"`);
+  res.send(html);
+});
+
+// 📑 GET /store/orders/export.pdf.html — صفحة طباعة جاهزة (Save as PDF من المتصفح)
+router.get("/store/orders/export.pdf.html", auth, (req, res) => {
+  const filtered = _exportFilterOrders(req.storeId, req.query);
+  const { headers, rows } = _exportRows(filtered);
+  const today = new Date().toISOString().slice(0, 10);
+  const store = (typeof getStore === "function") ? getStore(req.storeId) : null;
+  const storeName = (store && (store.storeName || store.name)) || req.storeId;
+  const from = req.query.from || "—";
+  const to   = req.query.to   || "—";
+  const statusLabel = (req.query.status && req.query.status !== "all") ? req.query.status : "كل الحالات";
+  const thead = headers.map(h => `<th>${_htmlEsc(h)}</th>`).join("");
+  const tbody = rows.map(r => `<tr>${r.map(c => `<td>${_htmlEsc(c)}</td>`).join("")}</tr>`).join("");
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>طلبات ${_htmlEsc(storeName)} - ${today}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; margin: 16px; color: #111827; }
+  .brand { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 14px; }
+  .brand h1 { margin:0; font-size: 22px; color:#1e3a8a; }
+  .meta { font-size: 12px; color:#374151; line-height:1.7; }
+  table { border-collapse: collapse; width: 100%; font-size: 11px; }
+  th { background:#1e3a8a; color:#fff; padding:6px 5px; border:1px solid #1e3a8a; text-align:right; font-weight:700; }
+  td { padding:5px; border:1px solid #d1d5db; text-align:right; vertical-align:top; word-break: break-word; }
+  tr:nth-child(even) td { background:#f9fafb; }
+  .foot { margin-top:14px; font-size:11px; color:#6b7280; text-align:center; }
+  .noprint { background:#f0f9ff; border:1px solid #bfdbfe; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; color:#1e3a8a; }
+  .noprint button { background:#1e3a8a; color:#fff; border:none; padding:7px 16px; border-radius:6px; cursor:pointer; font-weight:700; margin-inline-start:8px; }
+  @media print {
+    .noprint { display:none !important; }
+    body { margin: 8mm; }
+    table { font-size: 9px; }
+    th, td { padding: 3px 4px; }
+    @page { size: A4 landscape; margin: 8mm; }
+  }
+</style></head><body>
+<div class="noprint">
+  🖨️ نافذة الطباعة ستفتح تلقائياً. اختر <b>"حفظ بصيغة PDF"</b> (Save as PDF) من قائمة الطابعة.
+  <button onclick="window.print()">طباعة الآن</button>
+</div>
+<div class="brand">
+  <div>
+    <h1>📋 تقرير الطلبات — ${_htmlEsc(storeName)}</h1>
+    <div class="meta">
+      الفترة: ${_htmlEsc(from)} → ${_htmlEsc(to)} &nbsp;|&nbsp; الحالة: ${_htmlEsc(statusLabel)} &nbsp;|&nbsp; عدد الطلبات: <b>${rows.length}</b>
+    </div>
+  </div>
+  <div class="meta" style="text-align:left">
+    تاريخ التقرير: ${today}<br>
+    منصة ثواني
+  </div>
+</div>
+<table>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody || `<tr><td colspan="${headers.length}" style="text-align:center;padding:20px;color:#6b7280">لا توجد طلبات للفترة المحددة</td></tr>`}</tbody>
+</table>
+<div class="foot">تم إنشاء هذا التقرير من لوحة تحكم منصة ثواني — ${today}</div>
+<script>
+  // تشغيل تلقائي لنافذة الطباعة بعد تحميل الصفحة
+  window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });
+</script>
+</body></html>`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Disposition", `inline; filename="orders-${req.storeId}-${today}.html"`);
+  res.send(html);
 });
 
 router.get("/store/orders", auth, (req, res) => {
@@ -1781,20 +1942,42 @@ router.post("/store/orders/:orderId/complete", auth, async (req, res) => {
 
 شكراً لاختيارك *${storeName}* 🙏
 
-نأمل أن تكون تجربتك ممتازة. هل يمكنك تقييم خدمتنا؟
+كيف تقيّم تجربتك معنا؟ ⭐
 
-*1* — ⭐ سيء
-*2* — ⭐⭐ مقبول
-*3* — ⭐⭐⭐ جيد
-*4* — ⭐⭐⭐⭐ ممتاز
-*5* — ⭐⭐⭐⭐⭐ رائع جداً
+*1* — ⭐
+*2* — ⭐⭐
+*3* — ⭐⭐⭐
+*4* — ⭐⭐⭐⭐
+*5* — ⭐⭐⭐⭐⭐
 
-_اكتب رقم التقييم (من 1 إلى 5) أو ملاحظاتك_ 💬`;
+_اكتب رقم التقييم المناسب لك (من 1 إلى 5) 👇_`;
     try {
       await waMgr.sendMessage(req.storeId, order.customerPhone, ratingMsg);
-      // فعّل rating pending لهذا العميل
-      const ratings = require("./ratings");
-      // الـ ratings تستخدم pendingRatings Set في server.js — نعتمد على flow الموجود
+      
+      // فعّل rating pending لهذا العميل وجدول تذكير 24h
+      if (global.pendingRatings) {
+        const prevRating = global.pendingRatings.get(order.customerPhone);
+        if (prevRating?.timer) clearTimeout(prevRating.timer);
+        if (prevRating?.reminderTimer) clearTimeout(prevRating.reminderTimer);
+
+        const reminderTimer = setTimeout(async () => {
+          if (!global.pendingRatings || !global.pendingRatings.has(order.customerPhone)) return;
+          try {
+            const ratingsMod = require("./ratings");
+            await waMgr.sendMessage(req.storeId, order.customerPhone, ratingsMod.reminderMessage(storeName));
+          } catch (e) { console.warn("[rating-reminder] failed:", e.message); }
+        }, 24 * 60 * 60 * 1000);
+        reminderTimer.unref?.();
+
+        global.pendingRatings.set(order.customerPhone, {
+          storeId: req.storeId,
+          orderId: order.orderId,
+          storeName,
+          store,
+          timer: null,
+          reminderTimer
+        });
+      }
     } catch (e) { console.warn("[complete] rating msg fail:", e.message); }
   }
   res.json({ ok: true, label, emoji });
@@ -2555,6 +2738,7 @@ router.post("/store/accounting/recurring/:id/toggle", auth, (req, res) => {
 });
 
 // CSV export للـ P&L
+// CSV export للـ P&L
 router.get("/store/accounting/monthly/:yearMonth/csv", auth, (req, res) => {
   const pnl = accounting.calculateMonthlyPnL(req.storeId, req.params.yearMonth);
   const rows = [
@@ -2582,6 +2766,127 @@ router.get("/store/accounting/monthly/:yearMonth/csv", auth, (req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="pnl-${req.params.yearMonth}.csv"`);
   res.send(csv);
+});
+
+// Excel export للـ P&L
+router.get("/store/accounting/monthly/:yearMonth/xlsx", auth, (req, res) => {
+  const pnl = accounting.calculateMonthlyPnL(req.storeId, req.params.yearMonth);
+  const rows = [
+    ["البند", "القيمة (ر.س)"],
+    ["الإيرادات", pnl.revenue],
+    ["تكلفة البضاعة المباعة (COGS)", pnl.cogs],
+    ["مجمل الربح", pnl.grossProfit],
+    ["هامش الربح الإجمالي %", pnl.grossMargin],
+    ["مصاريف ثابتة", pnl.fixedExpenses],
+    ["مصاريف متغيرة", pnl.variableExpenses],
+    ["إجمالي المصاريف", pnl.totalExpenses],
+    ["الخصومات", pnl.discounts],
+    ["VAT المخرجة", pnl.vatOutput],
+    ["صافي الربح", pnl.netProfit],
+    ["هامش الربح الصافي %", pnl.netMargin],
+    ["عدد الطلبات", pnl.ordersCount],
+    ["العملاء الفريدون", pnl.uniqueCustomers],
+    ["متوسط قيمة الطلب", pnl.avgOrderValue],
+    [],
+    ["أفضل المنتجات ربحاً", ""],
+    ["المنتج", "الربح", "الكمية"],
+    ...pnl.topProducts.slice(0, 10).map(p => [p.name, p.profit, p.qty]),
+  ];
+  const thead = `<th>البند</th><th>القيمة (ر.س)</th>`;
+  const tbody = rows.map(r => `<tr>${r.map(c => `<td>${_htmlEsc(c)}</td>`).join("")}</tr>`).join("");
+  const html = `﻿<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8">
+<title>أرباح وخسائر ${req.params.yearMonth}</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background-color: #d9d9d9; font-weight: bold; text-align: right; padding: 8px; border: 1px solid #999; }
+  td { padding: 6px 8px; border: 1px solid #ccc; text-align: right; }
+  caption { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+</style></head><body>
+<table dir="rtl">
+<caption>أرباح وخسائر المتجر — ${req.storeId} — ${req.params.yearMonth}</caption>
+<thead><tr>${thead}</tr></thead>
+<tbody>${tbody}</tbody>
+</table></body></html>`;
+  res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="pnl-${req.params.yearMonth}.xls"`);
+  res.send(html);
+});
+
+// PDF page export للـ P&L
+router.get("/store/accounting/monthly/:yearMonth/pdf.html", auth, (req, res) => {
+  const pnl = accounting.calculateMonthlyPnL(req.storeId, req.params.yearMonth);
+  const store = getStore(req.storeId);
+  const storeName = store?.storeName || req.storeId;
+  const rows = [
+    ["الإيرادات", `${pnl.revenue} ر.س`],
+    ["تكلفة البضاعة المباعة (COGS)", `${pnl.cogs} ر.س`],
+    ["مجمل الربح", `${pnl.grossProfit} ر.س`],
+    ["هامش الربح الإجمالي %", `${pnl.grossMargin}%`],
+    ["مصاريف ثابتة", `${pnl.fixedExpenses} ر.س`],
+    ["مصاريف متغيرة", `${pnl.variableExpenses} ر.س`],
+    ["إجمالي المصاريف", `${pnl.totalExpenses} ر.س`],
+    ["الخصومات", `${pnl.discounts} ر.س`],
+    ["VAT المخرجة", `${pnl.vatOutput} ر.س`],
+    ["صافي الربح", `${pnl.netProfit} ر.س`],
+    ["هامش الربح الصافي %", `${pnl.netMargin}%`],
+    ["عدد الطلبات", pnl.ordersCount],
+    ["العملاء الفريدون", pnl.uniqueCustomers],
+    ["متوسط قيمة الطلب", `${pnl.avgOrderValue} ر.س`],
+  ];
+  
+  const topProductsRows = pnl.topProducts.slice(0, 10).map(p => 
+    `<tr><td>${_htmlEsc(p.name)}</td><td>${p.profit} ر.س</td><td>${p.qty}</td></tr>`
+  ).join("");
+
+  const tbody = rows.map(r => `<tr><td>${_htmlEsc(r[0])}</td><td>${_htmlEsc(r[1])}</td></tr>`).join("");
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>أرباح وخسائر ${storeName} - ${req.params.yearMonth}</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, Arial, sans-serif; direction: rtl; margin: 24px; color: #111827; }
+  .brand { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #10b981; padding-bottom: 10px; margin-bottom: 20px; }
+  .brand h1 { margin: 0; font-size: 22px; color: #111827; }
+  .meta { font-size: 13px; color: #4b5563; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 30px; }
+  th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: right; }
+  th { background-color: #f3f4f6; font-weight: bold; }
+  .sec-title { font-size: 16px; font-weight: bold; margin-top: 20px; color: #10b981; border-bottom: 1px solid #10b981; padding-bottom: 4px; }
+</style></head><body>
+<div class="brand">
+  <div>
+    <h1>تقرير الأرباح والخسائر (P&L)</h1>
+    <div class="meta">المتجر: <b>${_htmlEsc(storeName)}</b> | الشهر: <b>${req.params.yearMonth}</b></div>
+  </div>
+  <div class="meta" style="text-align:left">تاريخ التصدير: ${new Date().toISOString().slice(0, 10)}</div>
+</div>
+<table>
+  <thead>
+    <tr><th>البند</th><th>القيمة</th></tr>
+  </thead>
+  <tbody>
+    ${tbody}
+  </tbody>
+</table>
+
+<div class="sec-title">أفضل 10 منتجات ربحاً في هذا الشهر</div>
+<table>
+  <thead>
+    <tr><th>المنتج</th><th>الربح</th><th>الكمية المباعة</th></tr>
+  </thead>
+  <tbody>
+    ${topProductsRows || '<tr><td colspan="3" style="text-align:center">لا توجد بيانات</td></tr>'}
+  </tbody>
+</table>
+<script>
+  window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 400); });
+</script>
+</body></html>`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Disposition", `inline; filename="pnl-${req.params.yearMonth}.html"`);
+  res.send(html);
 });
 
 // ── نصائح AI المحاسب

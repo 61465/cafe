@@ -122,8 +122,16 @@ function deepCheck() {
   if (!writable) issues.push({ level: "critical", check: "data_writable", msg: "data/ غير قابل للكتابة" });
   if (disk && disk.freePct < 5)   issues.push({ level: "critical", check: "disk_space", msg: `disk free ${disk.freePct.toFixed(1)}%` });
   else if (disk && disk.freePct < 10) issues.push({ level: "warn", check: "disk_space", msg: `disk free ${disk.freePct.toFixed(1)}%` });
-  if (heap.pct > 90) issues.push({ level: "critical", check: "heap_memory", msg: `heap ${heap.pct.toFixed(0)}%` });
-  else if (heap.pct > 80) issues.push({ level: "warn", check: "heap_memory", msg: `heap ${heap.pct.toFixed(0)}%` });
+
+  // heap pct يضلّل لأن V8 يبدأ بـ heap صغير ثم يتوسع تلقائياً.
+  // الأصح: نراقب RSS مقارنةً بـ max_memory_restart من ecosystem (2.5GB)
+  // أو ببساطة، نراقب لو RSS > 90% من system free memory (الذي يدير Linux OOM killer)
+  const MAX_RSS_MB = 2200; // ~90% من 2.5GB max_memory_restart
+  if (heap.rssMB > MAX_RSS_MB) {
+    issues.push({ level: "critical", check: "memory_rss", msg: `RSS ${heap.rssMB}MB > ${MAX_RSS_MB}MB cap` });
+  } else if (heap.rssMB > MAX_RSS_MB * 0.85) {
+    issues.push({ level: "warn", check: "memory_rss", msg: `RSS ${heap.rssMB}MB approaching cap` });
+  }
 
   // sessions: لو stores.active > 0 و wa.open === 0 → critical
   if (stores.active > 0 && wa.open === 0) {
