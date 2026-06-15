@@ -23,30 +23,44 @@ const DEFAULT_PLANS = {
   },
 };
 
-// Returns { starter, pro, premium } — reads from file each time (no cache — file changes at runtime)
+// Returns plans from owner-settings (dynamic — يدعم plans مخصصة من الماستر)
 function getPlansFromFile() {
   try {
     if (!fs.existsSync(SETTINGS_FILE)) return null;
     const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8"));
-    if (!raw.plans) return null;
+    if (!raw.plans || typeof raw.plans !== "object") return null;
     return raw.plans;
   } catch { return null; }
 }
 
-function getPlan(planId) {
-  const filePlans = getPlansFromFile();
-  if (filePlans?.[planId]) {
-    const fp = filePlans[planId];
-    return {
-      id:      planId,
-      nameAr:  fp.nameAr  || DEFAULT_PLANS[planId]?.nameAr,
-      nameEn:  DEFAULT_PLANS[planId]?.nameEn || planId,
-      emoji:   fp.emoji   || DEFAULT_PLANS[planId]?.emoji,
-      color:   DEFAULT_PLANS[planId]?.color || "#6b7280",
-      features: { ...DEFAULT_PLANS[planId]?.features, ...(fp.sysFeatures || fp.features || {}) },
-    };
+// Returns all plans (custom + default fallback) كقاموس
+function getAllPlans() {
+  const file = getPlansFromFile();
+  if (file && Object.keys(file).length > 0) {
+    // أكمل metadata من defaults لو موجود
+    const out = {};
+    for (const [id, p] of Object.entries(file)) {
+      out[id] = {
+        id,
+        nameAr:  p.nameAr  || DEFAULT_PLANS[id]?.nameAr  || id,
+        nameEn:  DEFAULT_PLANS[id]?.nameEn || p.nameEn || id,
+        emoji:   p.emoji   || DEFAULT_PLANS[id]?.emoji   || "📦",
+        color:   DEFAULT_PLANS[id]?.color || p.color || "#6b7280",
+        price:   p.price ?? 0,
+        features: { ...DEFAULT_PLANS[id]?.features, ...(p.sysFeatures || p.features || {}) },
+      };
+    }
+    return out;
   }
-  return DEFAULT_PLANS[planId] || DEFAULT_PLANS.starter;
+  return DEFAULT_PLANS;
+}
+
+function getPlan(planId) {
+  const all = getAllPlans();
+  if (all[planId]) return all[planId];
+  // fallback: أول باقة متاحة (لأن الماستر قد يحذف starter)
+  const first = Object.values(all)[0];
+  return first || DEFAULT_PLANS.starter;
 }
 
 function getPlanFeatures(planId) {
@@ -60,4 +74,4 @@ function hasFeature(planId, feature) {
 // Keep PLANS for backward compat (used by master-router GET /master/plans)
 const PLANS = DEFAULT_PLANS;
 
-module.exports = { PLANS, DEFAULT_PLANS, getPlan, getPlanFeatures, hasFeature };
+module.exports = { PLANS, DEFAULT_PLANS, getPlan, getPlanFeatures, hasFeature, getAllPlans };

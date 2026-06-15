@@ -852,8 +852,15 @@ const SETTING_VALIDATORS = {
   storeName:          v => String(v || "").trim().slice(0, 100),
   currency:           v => String(v || "ر.س").trim().slice(0, 10),
   deliveryFee:        v => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n < 10000 ? n : null; },
-  workingHoursStart:  v => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 && n <= 24 ? n : null; },
-  workingHoursEnd:    v => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 && n <= 24 ? n : null; },
+  // يقبل HH:MM (مفضّل) أو رقم 0-24 (backward compat)
+  workingHoursStart:  v => {
+    if (typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v.trim())) return v.trim().padStart(5, "0");
+    const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 24 ? n : null;
+  },
+  workingHoursEnd:    v => {
+    if (typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v.trim())) return v.trim().padStart(5, "0");
+    const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 24 ? n : null;
+  },
   welcomeMessage:     v => String(v || "").slice(0, 2000),
   thankYouMessage:    v => String(v || "").slice(0, 1500),
   apologyMessage:     v => String(v || "").slice(0, 1500),

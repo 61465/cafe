@@ -881,18 +881,32 @@ function resolveStore(storeId) {
 }
 
 // ─── Working Hours ────────────────────────────────────────────────────────────
+// يقبل ساعة كـ number (0-24) أو string "HH:MM" — backward compatible
+function _toHourFloat(v, fallback) {
+  if (v == null || v === "") return fallback;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+  if (/^\d{1,2}$/.test(s)) return parseInt(s, 10);
+  return fallback;
+}
+
 function isStoreOpen(store) {
-  const hStart = store?.workingHoursStart ?? hourStart;
-  const hEnd   = store?.workingHoursEnd   ?? hourEnd;
-  if (hStart === 0 && hEnd === 24) return true;
+  const hStart = _toHourFloat(store?.workingHoursStart, hourStart);
+  const hEnd   = _toHourFloat(store?.workingHoursEnd,   hourEnd);
+  if (hStart === 0 && (hEnd >= 24 || hEnd >= 23.98)) return true; // 24/7
   const h = new Date().getHours() + new Date().getMinutes() / 60;
   return hStart <= hEnd ? h >= hStart && h < hEnd : h >= hStart || h < hEnd;
 }
 
 function formatHour(h) {
-  const period = h < 12 ? "صباحاً" : "مساءً";
-  const hour12 = h % 12 === 0 ? 12 : h % 12;
-  return `${hour12} ${period}`;
+  const hour = Math.floor(h);
+  const min  = Math.round((h - hour) * 60);
+  const period = hour < 12 ? "صباحاً" : "مساءً";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const mPart = min > 0 ? `:${String(min).padStart(2,"0")}` : "";
+  return `${hour12}${mPart} ${period}`;
 }
 
 // ─── Business Type Helpers ────────────────────────────────────────────────────
@@ -2075,8 +2089,8 @@ async function handleMessage(from, incoming) {
       .includes(session.step);
     if (!midFlow) {
       sessionManager.reset(from);
-      const hStart = store?.workingHoursStart ?? hourStart;
-      const hEnd   = store?.workingHoursEnd   ?? hourEnd;
+      const hStart = _toHourFloat(store?.workingHoursStart, hourStart);
+      const hEnd   = _toHourFloat(store?.workingHoursEnd,   hourEnd);
       return sendText(from,
         `عزيزي العميل،\n\n` +
         `🕐 *${store?.storeName || STORE_NAME}* مغلق حالياً.\n\n` +
@@ -2338,8 +2352,8 @@ async function sendWelcome(from) {
 
   // 🌙 Out-of-hours queue — استقبل الطلب لكن أبلغ بوقت المعالجة
   if (!isStoreOpen(store)) {
-    const hStart = store?.workingHoursStart ?? hourStart;
-    const hEnd   = store?.workingHoursEnd   ?? hourEnd;
+    const hStart = _toHourFloat(store?.workingHoursStart, hourStart);
+    const hEnd   = _toHourFloat(store?.workingHoursEnd,   hourEnd);
     // قائمة انتظار: استقبل الطلب لكن أعلِم أنه سيُعالج عند الفتح
     return sendText(from,
       `🌙 *${name}* مغلق حالياً\n\n` +
@@ -2457,8 +2471,8 @@ async function handleMainMenu(from, msg) {
   if (msg === "MY_CART")    return showCart(from, sessionManager.get(from));
   if (msg === "CONTACT_US") {
     const { store } = storeCtx.getStore() || {};
-    const hStart = store?.workingHoursStart ?? hourStart;
-    const hEnd   = store?.workingHoursEnd   ?? hourEnd;
+    const hStart = _toHourFloat(store?.workingHoursStart, hourStart);
+    const hEnd   = _toHourFloat(store?.workingHoursEnd,   hourEnd);
     return sendText(from,
       `📞 *تواصل معنا*\n\n📱 واتساب: نفس هذا الرقم\n⏰ أوقات العمل: ${formatHour(hStart)} – ${formatHour(hEnd)}\n\nاكتب أي رسالة للعودة للقائمة 😊`
     );
@@ -2528,8 +2542,8 @@ async function handleNumericMode(from, msg, session) {
   const raw = String(msg || "").trim();
   const { store, storeId } = storeCtx.getStore() || {};
   const name     = store?.storeName || STORE_NAME;
-  const hStart   = store?.workingHoursStart ?? hourStart;
-  const hEnd     = store?.workingHoursEnd   ?? hourEnd;
+  const hStart   = _toHourFloat(store?.workingHoursStart, hourStart);
+  const hEnd     = _toHourFloat(store?.workingHoursEnd,   hourEnd);
   const address  = store?.address || store?.location || "—";
 
   // 0 = عودة لقائمة المسارات الرئيسية
@@ -5011,10 +5025,10 @@ app.get(["/order/:token", "/o/:token", "/:token([a-zA-Z0-9]{4,12})"], (req, res)
     : [{ id: "__all__", name: "المنتجات", emoji: "🛍️", items: products.map(p => String(p.id)), subCategories: [] }];
 
   // ─── Header extras: حالة المتجر + التقييم + وقت التوصيل ──────────────────────
-  const hStart = store.workingHoursStart ?? 0;
-  const hEnd   = store.workingHoursEnd   ?? 24;
-  const nowH   = new Date().getHours();
-  const isOpen = nowH >= hStart && nowH < hEnd;
+  const hStart = _toHourFloat(store.workingHoursStart, 0);
+  const hEnd   = _toHourFloat(store.workingHoursEnd,   24);
+  const nowH   = new Date().getHours() + new Date().getMinutes() / 60;
+  const isOpen = (hStart === 0 && hEnd >= 23.98) ? true : (hStart <= hEnd ? (nowH >= hStart && nowH < hEnd) : (nowH >= hStart || nowH < hEnd));
   // التقييم: نقرأ من ratings الموجود (إن وُجد) — مجمع per store
   let storeRating = null;
   try {

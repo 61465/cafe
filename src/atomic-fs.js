@@ -87,22 +87,29 @@ function updateJsonl(file, mutator) {
 // يحمي من lost updates عند read-modify-write متزامن على نفس الملف.
 // مناسب لـ single PM2 process (الإعداد الحالي). لو انتقلنا لـ cluster:
 // استبدله بـ proper-lockfile الذي يقفل على نظام الملفات.
-const _locks = new Map(); // file → Promise (آخر عملية تستخدم الملف)
+const _locks       = new Map(); // file → Promise (آخر عملية في الـ chain)
+const _lockCounts  = new Map(); // file → عدد الـ pending
 
 async function withLock(file, fn) {
   const prev = _locks.get(file) || Promise.resolve();
   let release;
   const next = new Promise(r => { release = r; });
-  _locks.set(file, prev.then(() => next));
+  // chain: ننتظر prev ثم نُفعّل next عند الانتهاء (حتى لو prev فشل)
+  _locks.set(file, prev.catch(() => {}).then(() => next));
+  _lockCounts.set(file, (_lockCounts.get(file) || 0) + 1);
   try {
-    await prev;
+    await prev.catch(() => {}); // لا نُفجّر بسبب فشل عملية سابقة
     return await fn();
   } finally {
     release();
-    // نظّف الـ Map لو لا أحد ينتظر بعد قليل (تجنّب تضخم الذاكرة)
-    setTimeout(() => {
-      if (_locks.get(file) === next.then(() => {})) _locks.delete(file);
-    }, 100);
+    // counter-based cleanup: عند 0 pending، نمسح من Map (يمنع تضخم الذاكرة)
+    const left = (_lockCounts.get(file) || 1) - 1;
+    if (left <= 0) {
+      _lockCounts.delete(file);
+      _locks.delete(file);
+    } else {
+      _lockCounts.set(file, left);
+    }
   }
 }
 

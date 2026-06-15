@@ -1067,14 +1067,56 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
 
     <!-- ── Plans View ── -->
     <section id="plansView" style="display:none">
-      <div class="page-header">
-        <div><h1>📦 إدارة الباقات</h1><div class="sub">اضبط الأسعار والمميزات وما يراه العميل</div></div>
-        <button class="btn btn-primary" onclick="savePlans()">💾 حفظ التغييرات</button>
+      <div class="page-header" style="flex-wrap:wrap;gap:10px">
+        <div><h1>📦 إدارة الباقات</h1><div class="sub">أضف، عدّل، أو احذف الباقات. يمكنك العمل بباقة واحدة فقط</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline" onclick="resetPlansToDefault()" title="استعادة الباقات الافتراضية الـ3">🔄 افتراضي</button>
+          <button class="btn btn-outline" onclick="openNewPlanModal()" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46">➕ باقة جديدة</button>
+          <button class="btn btn-primary" onclick="savePlans()">💾 حفظ التغييرات</button>
+        </div>
       </div>
       <div class="plans-editor" id="plansEditor">
         <div class="empty-state" style="padding:40px"><div class="icon">⏳</div><p>جاري التحميل...</p></div>
       </div>
     </section>
+
+    <!-- ── New Plan Modal ── -->
+    <div id="newPlanModal" onclick="if(event.target===this)closeNewPlanModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1300;align-items:center;justify-content:center;padding:18px">
+      <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.3);overflow:hidden">
+        <div style="background:linear-gradient(135deg,#065f46,#10b981);color:#fff;padding:16px 20px">
+          <div style="font-size:17px;font-weight:900">➕ باقة جديدة</div>
+          <div style="font-size:12px;opacity:.9;margin-top:3px">أنشئ باقة بمميزات وسعر مخصصين</div>
+        </div>
+        <div style="padding:18px 20px">
+          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">المعرّف (حروف إنجليزية وأرقام فقط)</label>
+          <input id="np_id" placeholder="مثال: enterprise" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;direction:ltr;margin-bottom:10px">
+          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">الاسم بالعربي</label>
+          <input id="np_nameAr" placeholder="مثال: المؤسسات" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:10px">
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:10px">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">الرمز التعبيري</label>
+              <input id="np_emoji" placeholder="🏢" maxlength="4" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:18px;text-align:center">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:4px">السعر (ر.س/شهر)</label>
+              <input id="np_price" type="number" min="0" placeholder="500" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px">
+            </div>
+          </div>
+          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">المميزات الفنية المُفعّلة</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:14px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="np_f_adminPanel" checked> لوحة إدارة</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="np_f_invoiceImage"> فاتورة صورة</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="np_f_customerRegistry"> سجل عملاء</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="np_f_stripe"> دفع إلكتروني</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:12px"><input type="checkbox" id="np_f_webOrder"> طلب عبر الويب</label>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="closeNewPlanModal()" style="flex:1;background:#fff;border:1px solid #d1d5db;color:#374151;padding:11px;border-radius:9px;cursor:pointer;font-weight:700;font-family:inherit">إلغاء</button>
+            <button onclick="createNewPlan()" style="flex:2;background:linear-gradient(135deg,#065f46,#10b981);color:#fff;border:none;padding:11px;border-radius:9px;cursor:pointer;font-weight:800;font-family:inherit">✨ إنشاء</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Bank View ── -->
     <section id="bankView" style="display:none">
@@ -1609,12 +1651,19 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
           <input id="f_deliveryFee" type="number" placeholder="10">
         </div>
         <div class="field">
-          <label>ساعات العمل</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="f_start" type="number" min="0" max="23" placeholder="0" style="width:80px">
-            <span style="color:var(--gray)">←</span>
-            <input id="f_end" type="number" min="1" max="24" placeholder="24" style="width:80px">
+          <label>🕒 ساعات العمل</label>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:11px;color:#6b7280">يفتح</span>
+              <input id="f_start" type="time" value="00:00" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;width:115px">
+            </div>
+            <span style="margin-top:18px;color:#9ca3af">←</span>
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <span style="font-size:11px;color:#6b7280">يقفل</span>
+              <input id="f_end" type="time" value="23:59" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;width:115px">
+            </div>
           </div>
+          <span class="hint" style="font-size:11px;color:#9ca3af">للعمل 24/7: اضبط 00:00 → 23:59</span>
         </div>
       </div>
 
@@ -2412,8 +2461,19 @@ function openStoreModal(id = null) {
   document.getElementById("f_ownerName").value        = store?.ownerName || "";
   document.getElementById("f_ownerPhone").value       = store?.ownerPhone || "";
   document.getElementById("f_deliveryFee").value      = store?.deliveryFee ?? 10;
-  document.getElementById("f_start").value            = store?.workingHoursStart ?? 0;
-  document.getElementById("f_end").value              = store?.workingHoursEnd ?? 24;
+  // ساعات العمل — يقبل number قديم أو string جديد "HH:MM"
+  const _toHHMM = (v, def) => {
+    if (v == null || v === "") return def;
+    if (typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v)) return v.padStart(5, "0");
+    if (typeof v === "number") {
+      const h = Math.max(0, Math.min(24, Math.floor(v)));
+      const m = Math.round((v - h) * 60);
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    }
+    return def;
+  };
+  document.getElementById("f_start").value = _toHHMM(store?.workingHoursStart, "00:00");
+  document.getElementById("f_end").value   = _toHHMM(store?.workingHoursEnd,   "23:59");
   document.getElementById("f_phoneNumberId").value    = store?.phoneNumberId || "";
   document.getElementById("f_wabaId").value           = store?.wabaId || "";
   document.getElementById("f_token").value            = store?.token || "";
@@ -2459,8 +2519,8 @@ async function saveStore() {
     ownerName:               document.getElementById("f_ownerName").value.trim(),
     ownerPhone:              document.getElementById("f_ownerPhone").value.trim(),
     deliveryFee:             parseFloat(document.getElementById("f_deliveryFee").value) || 0,
-    workingHoursStart:       parseInt(document.getElementById("f_start").value) || 0,
-    workingHoursEnd:         parseInt(document.getElementById("f_end").value) || 24,
+    workingHoursStart:       document.getElementById("f_start").value || "00:00",
+    workingHoursEnd:         document.getElementById("f_end").value   || "23:59",
     phoneNumberId:           document.getElementById("f_phoneNumberId").value.trim(),
     wabaId:                  document.getElementById("f_wabaId").value.trim(),
     token:                   document.getElementById("f_token").value.trim(),
@@ -2852,24 +2912,37 @@ const SYS_FEATURES = [
   { key: "customerRegistry", label: "سجل عملاء VIP" },
   { key: "stripe",           label: "دفع إلكتروني Stripe" },
 ];
-const PLAN_IDS = ["starter", "pro", "premium"];
+// PLAN_IDS أصبح dynamic — يُعبَّأ من plans الواردة
+let PLAN_IDS = ["starter", "pro", "premium"];
 
 function renderPlansEditor(plans) {
   const el = document.getElementById("plansEditor");
+  PLAN_IDS = Object.keys(plans || {});
+  if (!PLAN_IDS.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:60px;text-align:center;background:#fffbeb;border:2px dashed #fcd34d;border-radius:14px">
+      <div style="font-size:48px;margin-bottom:10px">📦</div>
+      <h3 style="color:#92400e;margin:0 0 6px;font-size:17px">لا توجد باقات</h3>
+      <p style="color:#92400e;font-size:13px;margin:0 0 14px">المتاجر لن تستطيع الاشتراك. أضف باقة أو استعد الافتراضي.</p>
+      <button class="btn btn-primary" onclick="openNewPlanModal()">➕ أضف باقة</button>
+    </div>`;
+    return;
+  }
   el.innerHTML = PLAN_IDS.map(pid => {
     const p = plans[pid] || {};
     const sf = p.sysFeatures || {};
     const df = p.displayFeatures || [];
     return `
-    <div class="plan-edit-card" data-plan="${pid}">
+    <div class="plan-edit-card" data-plan="${pid}" style="position:relative">
+      <button onclick="deletePlan('${pid}')" title="حذف هذه الباقة" style="position:absolute;top:10px;left:10px;background:#fee2e2;color:#991b1b;border:none;width:30px;height:30px;border-radius:7px;cursor:pointer;font-size:14px;z-index:1">🗑️</button>
       <div class="plan-edit-header">
         <input class="plan-emoji-input" data-field="emoji" value="${p.emoji||""}" placeholder="🌱" maxlength="4">
         <input class="plan-name-input" data-field="nameAr" value="${p.nameAr||""}" placeholder="اسم الباقة">
         <div class="plan-price-wrap" style="margin-right:auto">
           <input class="plan-price-input" data-field="price" type="number" value="${p.price??0}" min="0">
-          <span class="plan-price-unit">$ / شهر</span>
+          <span class="plan-price-unit">ر.س / شهر</span>
         </div>
       </div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;padding-right:4px">المعرّف: <code dir="ltr" style="font-family:monospace;background:#f3f4f6;padding:1px 6px;border-radius:4px">${pid}</code></div>
       <div class="sys-features">
         <div class="sys-feat-title">مميزات النظام</div>
         ${SYS_FEATURES.map(f => `
@@ -2954,7 +3027,9 @@ async function loadPlanPrices() {
 
 async function savePlans() {
   const plans = collectPlansFromDOM();
-  const planPrices = { starter: plans.starter?.price||0, pro: plans.pro?.price||0, premium: plans.premium?.price||0 };
+  // planPrices ديناميكي حسب الباقات الموجودة
+  const planPrices = {};
+  for (const id of Object.keys(plans)) planPrices[id] = plans[id].price || 0;
   try {
     await api("PUT", "/master/owner-settings", { plans, planPrices });
     if (!ownerSettings) ownerSettings = {};
@@ -2962,6 +3037,65 @@ async function savePlans() {
     ownerSettings.planPrices = planPrices;
     showToast("تم حفظ الباقات ✅", "success");
   } catch { showToast("فشل الحفظ", "error"); }
+}
+
+// ─── Plans CRUD: delete/create/reset ────────────────────────────────────────
+async function deletePlan(planId) {
+  if (!confirm(`حذف الباقة "${planId}" نهائياً؟`)) return;
+  try {
+    await api("DELETE", `/master/plans/${encodeURIComponent(planId)}`);
+    showToast(`تم حذف ${planId} ✅`, "success");
+    loadPlanPrices();
+  } catch (e) {
+    const msg = e?.error || e?.message || "فشل الحذف";
+    if (e?.stores) {
+      const list = e.stores.map(s => `• ${s.name || s.id}`).join("\n");
+      alert(`${msg}\n\nالمتاجر المتأثرة:\n${list}`);
+    } else {
+      showToast(msg, "error");
+    }
+  }
+}
+
+function openNewPlanModal() {
+  ["np_id","np_nameAr","np_emoji","np_price"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("np_f_adminPanel").checked = true;
+  ["invoiceImage","customerRegistry","stripe","webOrder"].forEach(k => document.getElementById("np_f_"+k).checked = false);
+  document.getElementById("newPlanModal").style.display = "flex";
+}
+function closeNewPlanModal() {
+  document.getElementById("newPlanModal").style.display = "none";
+}
+async function createNewPlan() {
+  const id = document.getElementById("np_id").value.trim().toLowerCase();
+  const nameAr = document.getElementById("np_nameAr").value.trim();
+  if (!/^[a-z0-9_]{1,30}$/.test(id)) { showToast("معرّف غير صالح (a-z، 0-9، _ فقط)", "error"); return; }
+  if (!nameAr) { showToast("الاسم مطلوب", "error"); return; }
+  const sysFeatures = {};
+  ["adminPanel","invoiceImage","customerRegistry","stripe","webOrder"].forEach(k => {
+    sysFeatures[k] = document.getElementById("np_f_"+k).checked;
+  });
+  try {
+    await api("POST", "/master/plans", {
+      id, nameAr,
+      emoji: document.getElementById("np_emoji").value.trim() || "📦",
+      price: parseFloat(document.getElementById("np_price").value) || 0,
+      sysFeatures,
+      displayFeatures: [],
+    });
+    showToast("تمت إضافة الباقة ✅", "success");
+    closeNewPlanModal();
+    loadPlanPrices();
+  } catch (e) { showToast(e?.error || "فشل الإنشاء", "error"); }
+}
+
+async function resetPlansToDefault() {
+  if (!confirm("استعادة الباقات الافتراضية الثلاث؟ هذا يستبدل التخصيصات الحالية.")) return;
+  try {
+    await api("POST", "/master/plans/reset", {});
+    showToast("تمت الاستعادة ✅", "success");
+    loadPlanPrices();
+  } catch (e) { showToast(e?.error || "فشل", "error"); }
 }
 
 // ─── Platform Leads ────────────────────────────────────────────────────────────

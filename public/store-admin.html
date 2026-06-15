@@ -991,13 +991,25 @@ tr:hover td{background:#fafcfa}
             <span class="hint">يظهر في رأس صفحة الطلب للعملاء 🚴 ~30 دقيقة — اتركه فارغاً لإخفائه</span>
           </div>
           <div class="field">
-            <label>ساعات العمل</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="s_start" type="number" min="0" max="23" placeholder="0" style="width:80px">
-              <span style="color:var(--gray)">←</span>
-              <input id="s_end" type="number" min="1" max="24" placeholder="24" style="width:80px">
+            <label>🕒 ساعات العمل</label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;background:#f3f4f6;padding:7px 12px;border-radius:7px">
+                <input id="s_open24" type="checkbox" onchange="toggleOpen24()" style="margin:0">
+                <span style="font-size:13px;font-weight:700">⏰ مفتوح 24/7</span>
+              </label>
             </div>
-            <span class="hint">مثال: من الساعة 0 (منتصف الليل) إلى 24</span>
+            <div id="s_hoursRow" style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11px;color:#6b7280">يفتح الساعة</span>
+                <input id="s_start" type="time" value="00:00" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;width:120px">
+              </div>
+              <span style="margin-top:18px;color:#9ca3af;font-size:16px">←</span>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <span style="font-size:11px;color:#6b7280">يقفل الساعة</span>
+                <input id="s_end" type="time" value="23:59" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:14px;width:120px">
+              </div>
+            </div>
+            <span class="hint">مثال: 08:00 → 23:00. خارج هذا الوقت يرسل البوت رسالة "متجرنا مغلق".</span>
           </div>
         </div>
 
@@ -2756,6 +2768,33 @@ function applyBusinessLabels() {
 // ─── Navigation ─────────────────────────────────────────────────────────────
 function toggleDeliveryFeeS() {
   applyBusinessLabels();
+}
+
+// ─── ساعات العمل: helpers ───────────────────────────────────────────────────
+function _normalizeHourInput(v, fallback) {
+  // يقبل: 0..24 (ساعة integer) أو "HH:MM" أو null
+  if (v == null || v === "") return fallback;
+  if (typeof v === "number") {
+    if (v >= 24) return "23:59";
+    if (v <= 0)  return "00:00";
+    const h = Math.floor(v);
+    const m = Math.round((v - h) * 60);
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+  const s = String(v).trim();
+  if (/^\d{1,2}:\d{2}$/.test(s)) return s.padStart(5, "0");
+  // رقم نصياً مثل "8" أو "23"
+  if (/^\d{1,2}$/.test(s)) return s.padStart(2, "0") + ":00";
+  return fallback;
+}
+
+function toggleOpen24() {
+  const on = document.getElementById("s_open24").checked;
+  document.getElementById("s_hoursRow").style.display = on ? "none" : "flex";
+  if (on) {
+    document.getElementById("s_start").value = "00:00";
+    document.getElementById("s_end").value   = "23:59";
+  }
 }
 
 function showTab(tab) {
@@ -6305,8 +6344,15 @@ async function loadSettings() {
     document.getElementById("s_deliveryFee").value    = store.deliveryFee ?? 10;
     document.getElementById("s_deliveryTime").value   = store.avgDeliveryMin ?? "";
     toggleDeliveryFeeS();
-    document.getElementById("s_start").value       = store.workingHoursStart ?? 0;
-    document.getElementById("s_end").value         = store.workingHoursEnd ?? 24;
+    // ساعات العمل — backward compat: نقبل number ساعة (0-24) أو string "HH:MM"
+    const openVal  = store.workingHoursStart ?? 0;
+    const closeVal = store.workingHoursEnd ?? 24;
+    document.getElementById("s_start").value = _normalizeHourInput(openVal, "00:00");
+    document.getElementById("s_end").value   = _normalizeHourInput(closeVal, "23:59");
+    // 24/7: إذا 00:00 → 24:00 (أو 23:59)
+    const is247 = (openVal === 0 || openVal === "00:00") && (closeVal === 24 || closeVal === "24:00" || closeVal === "23:59");
+    document.getElementById("s_open24").checked = is247;
+    toggleOpen24();
     document.getElementById("s_welcome").value     = store.welcomeMessage || "";
     document.getElementById("s_color").value          = store.invoiceColor || "#1b5e20";
     document.getElementById("s_accentColor").value    = store.themeAccent || "#D4AF37";
@@ -6451,8 +6497,8 @@ async function saveSettings() {
     businessType:     val("s_businessType","delivery") || "delivery",
     deliveryFee:      parseFloat(val("s_deliveryFee","0")) || 0,
     avgDeliveryMin:   parseInt(val("s_deliveryTime","")) || null,
-    workingHoursStart:parseInt(val("s_start","0")) || 0,
-    workingHoursEnd:  parseInt(val("s_end","24")) || 24,
+    workingHoursStart: document.getElementById("s_open24").checked ? "00:00" : (val("s_start","00:00") || "00:00"),
+    workingHoursEnd:   document.getElementById("s_open24").checked ? "23:59" : (val("s_end","23:59") || "23:59"),
     welcomeMessage:   String(val("s_welcome","")).trim(),
     invoiceColor:     val("s_color","#1b5e20"),
     themeAccent:      val("s_accentColor","#D4AF37"),

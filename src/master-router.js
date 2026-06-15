@@ -256,11 +256,11 @@ function readOwnerSettings() {
   try {
     if (!fs.existsSync(OWNER_SETTINGS_FILE)) return defaults;
     const saved = JSON.parse(fs.readFileSync(OWNER_SETTINGS_FILE, "utf8"));
-    // Deep merge plans so missing plan keys fall back to defaults
-    const plans = {};
-    for (const id of ["starter", "pro", "premium"]) {
-      plans[id] = { ...DEFAULT_PLANS[id], ...(saved.plans?.[id] || {}) };
-    }
+    // الباقات: لو saved.plans موجود (حتى لو فارغ) → استخدمه. يدعم إضافة/حذف من الماستر.
+    // لو saved.plans غير معرّف نهائياً → defaults (أول تشغيل).
+    const plans = (saved.plans && typeof saved.plans === "object")
+      ? saved.plans
+      : DEFAULT_PLANS;
     return { ...defaults, ...saved, plans };
   } catch { return defaults; }
 }
@@ -764,10 +764,92 @@ router.get("/master/analytics/growth", auth, (req, res) => {
   res.json(require("./analytics").getGrowthAnalytics(months));
 });
 
+// ─── Plans CRUD — flexible (add/edit/delete، أو لا باقات) ────────────────────
+const FEATURE_KEYS = ["adminPanel", "invoiceImage", "customerRegistry", "stripe", "webOrder"];
+
+function _normalizePlan(id, p) {
+  const out = {
+    nameAr: String(p.nameAr || "باقة").trim().slice(0, 60),
+    emoji:  String(p.emoji  || "📦").slice(0, 8),
+    price:  Number.isFinite(+p.price) ? Math.max(0, +p.price) : 0,
+    sysFeatures: {},
+    displayFeatures: Array.isArray(p.displayFeatures)
+      ? p.displayFeatures.slice(0, 20).map(f => ({
+          text:     String(f?.text || "").trim().slice(0, 200),
+          included: f?.included !== false,
+        })).filter(f => f.text)
+      : [],
+  };
+  for (const k of FEATURE_KEYS) out.sysFeatures[k] = p.sysFeatures?.[k] === true;
+  // backward compat: features
+  if (p.features && !p.sysFeatures) {
+    for (const k of FEATURE_KEYS) out.sysFeatures[k] = p.features[k] === true;
+  }
+  return out;
+}
+
+// GET — يرجع كل الباقات من owner-settings (أو [] لو الماستر حذف الجميع)
 router.get("/master/plans", auth, (_req, res) => {
-  res.json({ plans: Object.values(PLANS).map(p => ({
-    id: p.id, nameAr: p.nameAr, emoji: p.emoji, color: p.color, features: p.features
-  })) });
+  const plans = readOwnerSettings().plans || {};
+  res.json({ plans });
+});
+
+// POST /master/plans — إضافة باقة جديدة { id, nameAr, emoji, price, sysFeatures, displayFeatures }
+router.post("/master/plans", auth, (req, res) => {
+  const body = req.body || {};
+  const id = String(body.id || "").trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 30);
+  if (!id) return res.status(400).json({ error: "id مطلوب (a-z, 0-9, _)" });
+  const settings = readOwnerSettings();
+  const plans = { ...(settings.plans || {}) };
+  if (plans[id]) return res.status(409).json({ error: "باقة بهذا المعرف موجودة" });
+  plans[id] = _normalizePlan(id, body);
+  settings.plans = plans;
+  writeOwnerSettings(settings);
+  audit({ actor: { type: "master", id: "master" }, action: "plans.create", target: { type: "plan", id } }, req);
+  res.json({ ok: true, id, plan: plans[id] });
+});
+
+// PUT /master/plans/:id — تعديل
+router.put("/master/plans/:id", auth, (req, res) => {
+  const id = String(req.params.id || "").trim().toLowerCase();
+  const settings = readOwnerSettings();
+  const plans = { ...(settings.plans || {}) };
+  if (!plans[id]) return res.status(404).json({ error: "باقة غير موجودة" });
+  plans[id] = _normalizePlan(id, { ...plans[id], ...req.body });
+  settings.plans = plans;
+  writeOwnerSettings(settings);
+  audit({ actor: { type: "master", id: "master" }, action: "plans.update", target: { type: "plan", id } }, req);
+  res.json({ ok: true, id, plan: plans[id] });
+});
+
+// DELETE /master/plans/:id — حذف. يُسمح بـ 0 باقات (الماستر يقرر)
+router.delete("/master/plans/:id", auth, (req, res) => {
+  const id = String(req.params.id || "").trim().toLowerCase();
+  const settings = readOwnerSettings();
+  const plans = { ...(settings.plans || {}) };
+  if (!plans[id]) return res.status(404).json({ error: "باقة غير موجودة" });
+  // فحص: لو يوجد متاجر على هذه الباقة، نمنع الحذف لتجنب inconsistency
+  const usingStores = (readStores().stores || []).filter(s => s.plan === id);
+  if (usingStores.length > 0) {
+    return res.status(409).json({
+      error: `لا يمكن حذف هذه الباقة: ${usingStores.length} متجر يستخدمها. غيّر باقاتهم أولاً.`,
+      stores: usingStores.map(s => ({ id: s.id, name: s.storeName })),
+    });
+  }
+  delete plans[id];
+  settings.plans = plans;
+  writeOwnerSettings(settings);
+  audit({ actor: { type: "master", id: "master" }, action: "plans.delete", target: { type: "plan", id } }, req);
+  res.json({ ok: true });
+});
+
+// POST /master/plans/reset — استعادة الباقات الافتراضية الـ3
+router.post("/master/plans/reset", auth, (req, res) => {
+  const settings = readOwnerSettings();
+  settings.plans = JSON.parse(JSON.stringify(DEFAULT_PLANS));
+  writeOwnerSettings(settings);
+  audit({ actor: { type: "master", id: "master" }, action: "plans.reset", target: { type: "plans" } }, req);
+  res.json({ ok: true, plans: settings.plans });
 });
 
 // ─── Stores CRUD ──────────────────────────────────────────────────────────────
