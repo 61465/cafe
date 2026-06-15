@@ -62,10 +62,12 @@ function pushHistory(rec, entry) {
 
 function addPoints(storeId, phone, total, orderId, store, bonusOverride) {
   const settings = getSettings(store);
-  if (!settings.enabled && !bonusOverride) return { newPoints: 0, totalPoints: 0 };
+  // إن كان النظام مُغلقاً، لا earn ولا bonus — لا نقاط أشباح غير قابلة للاستبدال
+  if (!settings.enabled) return { newPoints: 0, totalPoints: 0 };
   const db  = load(storeId);
   // bonusOverride: مقدار النقاط الثابت (مثلاً مكافأة تقييم 5 نقاط) — يتجاوز الحساب من total
   const pts = bonusOverride > 0 ? bonusOverride : calcPoints(total, store);
+  if (pts <= 0) return { newPoints: 0, totalPoints: (db[phone]?.points || 0) };
   const rec = ensureRecord(db, phone);
   rec.points += pts;
   if (!bonusOverride) {
