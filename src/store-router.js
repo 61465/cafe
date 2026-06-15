@@ -2258,11 +2258,7 @@ router.post("/store/orders/:orderId/confirm", auth, async (req, res) => {
       ? `⏱️ الوقت المتوقع: *${estimatedMinutes} دقيقة* تقريباً\n`
       : "";
     // رابط الموقع المسجّل — حتى يتأكد العميل من صحته قبل التوصيل
-    const locName = order.customerLocationName || order.customerLocation || "";
-    const locMaps = order.customerLocationMapsUrl || "";
-    const locationLine = locName
-      ? `\n📍 *الموقع المسجّل:* ${locName}\n${locMaps ? `🗺️ ${locMaps}\n` : ""}_⚠️ إن لم يكن الموقع صحيحاً، اكتب: *تعديل الموقع*_\n`
-      : "";
+    const locationLine = require("./order-helpers").buildLocationLine(order, store);
     const confirmMsg =
       `✅ *تم تأكيد طلبك!*\n\n` +
       `رقم الطلب: *${orderId}*\n` +

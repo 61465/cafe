@@ -1626,11 +1626,7 @@ async function handleOwnerCommand(from, text, store, storeId) {
         ? `\n🏆 كسبت *${earned.newPoints}* نقطة! رصيدك: *${earned.totalPoints}*\n` : "";
       const etaLine = store?.avgDeliveryMin ? `⏱️ الوقت المتوقع: *${store.avgDeliveryMin} دقيقة* تقريباً\n` : "";
       // رابط الموقع المسجّل — حتى يتأكد العميل من صحته
-      const locName  = order.customerLocationName || order.customerLocation || "";
-      const locMaps  = order.customerLocationMapsUrl || "";
-      const locationLine = locName
-        ? `\n📍 *الموقع المسجّل:* ${locName}\n${locMaps ? `🗺️ ${locMaps}\n` : ""}_⚠️ إن لم يكن الموقع صحيحاً، اكتب: *تعديل الموقع*_\n`
-        : "";
+      const locationLine = require("./order-helpers").buildLocationLine(order, store);
       const confirmMsg =
         `✅ *تم تأكيد طلبك!*\n\nرقم الطلب: *${order.orderId}*\n` +
         etaLine +
