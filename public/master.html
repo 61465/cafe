@@ -105,6 +105,15 @@ input,select,textarea{font-family:inherit}
 .mobile-header{display:none}
 .nav-backdrop{display:none}
 
+/* عطّل sidebar toggle من ux-enhancements.js — استبدلناه بـ mobile-header الخاص بنا */
+#uxSidebarToggle{display:none !important}
+/* اعتبر الـ media query من ux-enhancements لاغ ـ نستخدم آليتنا */
+body.ux-sidebar-hidden .sidebar{transform:none !important}
+@media(max-width:900px){
+  body:not(.ux-sidebar-open) .sidebar{transform:translateX(100%) !important}
+  body.ux-sidebar-open::after{display:none !important}
+}
+
 /* ─── Page Header ────────────────────────────────────────────── */
 .page-header{
   display:flex;justify-content:space-between;align-items:center;
@@ -597,7 +606,7 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
     left:0;
     right:0;
     height:56px;
-    background:linear-gradient(135deg,var(--green-dark),var(--green));
+    background:linear-gradient(135deg,#0d3818,var(--green));
     color:#fff;
     align-items:center;
     padding:0 14px;
@@ -2204,8 +2213,10 @@ function toggleMobileNav(force) {
   const bd = document.querySelector(".nav-backdrop");
   if (!sb || !bd) return;
   const willOpen = (typeof force === "boolean") ? force : !sb.classList.contains("open");
+  // نضبط الكلاسين معاً (.open للـ CSS الخاص بنا، ux-sidebar-open للتوافق مع ux-enhancements)
   sb.classList.toggle("open", willOpen);
   bd.classList.toggle("open", willOpen);
+  document.body.classList.toggle("ux-sidebar-open", willOpen);
   document.body.style.overflow = willOpen ? "hidden" : "";
 }
 
