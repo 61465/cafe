@@ -6312,7 +6312,7 @@ function renderOrdersTable() {
             : `${(o.total||0).toFixed(2)} ${currency}`
         }</td>
         <td class="col-hide" style="font-size:12px;color:var(--gray);white-space:nowrap">${dt}</td>
-        <td>${statusBadge}${confirmBtn}<button onclick="openOrderDetails('${esc(o.orderId)}')" style="background:#3b82f6;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;margin-top:6px;display:inline-flex;align-items:center;gap:4px">👁️ تفاصيل</button></td>
+        <td>${statusBadge}${confirmBtn}<button onclick="openOrderDetails('${esc(o.orderId)}')" style="background:#3b82f6;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;margin-top:6px;display:inline-flex;align-items:center;gap:4px">👁️ تفاصيل</button><button onclick="printOrderTicket('${esc(o.orderId)}')" title="طباعة فاتورة لاصقة" style="background:#0d9488;color:#fff;border:none;border-radius:7px;padding:6px 10px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:700;margin-top:6px;margin-right:4px;display:inline-flex;align-items:center;gap:4px">🖨️ طباعة</button></td>
       </tr>`;
     }).join("");
 
@@ -6324,6 +6324,15 @@ function renderOrdersTable() {
 }
 
 // ═════════════ Order Details Modal ═════════════
+// 🖨️ يفتح صفحة طباعة الفاتورة (نافذة جديدة + auto-print)
+function printOrderTicket(orderId) {
+  const tok = STORE_TOKEN || localStorage.getItem("store_token");
+  if (!tok) { showToast("⚠️ الجلسة منتهية", "error"); return; }
+  const url = `/store/orders/${encodeURIComponent(orderId)}/print?size=thermal&copies=1&token=${encodeURIComponent(tok)}`;
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  if (!w) showToast("⚠️ المتصفح حجب النافذة — اسمح بالنوافذ المنبثقة", "error");
+}
+
 function openOrderDetails(orderId) {
   const o = (_ORDERS_CACHE || []).find(x => x.orderId === orderId);
   if (!o) { showToast("الطلب غير موجود", "error"); return; }

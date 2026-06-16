@@ -1906,6 +1906,213 @@ router.get("/store/orders/export.pdf.html", auth, (req, res) => {
   res.send(html);
 });
 
+// 🧾 GET /store/orders/:orderId/print — فاتورة قابلة للطباعة (لاصق على المنتج)
+//   ?size=thermal (80mm) [default] | a4 | a5
+//   ?copies=N (1-5)
+//   تفتح + تطبع تلقائياً
+router.get("/store/orders/:orderId/print", auth, (req, res) => {
+  const { orderId } = req.params;
+  const size   = ["a4","a5","thermal"].includes(req.query.size) ? req.query.size : "thermal";
+  const copies = Math.min(5, Math.max(1, parseInt(req.query.copies, 10) || 1));
+  const orders = readOrders(req.storeId);
+  const order  = orders.find(o => o.orderId === orderId);
+  if (!order) return res.status(404).send("الطلب غير موجود");
+  const store = (typeof getStore === "function") ? getStore(req.storeId) : null;
+  const storeName = store?.storeName || req.storeId;
+  const currency = store?.currency || "ر.س";
+  const ts = order.timestamp ? new Date(order.timestamp) : new Date();
+  const dateStr = ts.toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" });
+  const timeStr = ts.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const phoneMask = (() => {
+    const s = String(order.customerPhone || "").replace(/\D/g, "");
+    return s.length >= 4 ? s.slice(0, -4) + "****" : s;
+  })();
+  const fullPhone = String(order.customerPhone || "").replace(/\D/g, "");
+  const items = Array.isArray(order.items) ? order.items : [];
+  const cleanAddress = String(order.customerLocationName || order.customerLocation || "")
+    .replace(/\s*\(📍\s*https?:\/\/[^)]+\)\s*/g, "").trim();
+  const mapsUrl = order.customerLocationMapsUrl
+    || (cleanAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanAddress + (store?.city ? ", " + store.city : ""))}` : "");
+  // dynamic answers
+  const dynRows = order.customAnswers && typeof order.customAnswers === "object"
+    ? Object.entries(order.customAnswers)
+        .filter(([_, v]) => v && String(v).trim())
+        .slice(0, 8)
+        .map(([k, v]) => `<tr><td class="lbl">${_htmlEsc(k)}</td><td>${_htmlEsc(v)}</td></tr>`).join("")
+    : "";
+
+  const itemsRowsThermal = items.map(it => `
+      <div class="item">
+        <div class="ix">
+          <span class="iname">${_htmlEsc(it.name || "")} <small>×${it.qty || 1}</small></span>
+          <span class="iprice">${(Number(it.price || 0) * Number(it.qty || 1)).toFixed(2)}</span>
+        </div>
+        ${it.notes ? `<div class="inotes">📝 ${_htmlEsc(it.notes)}</div>` : ""}
+      </div>`).join("");
+
+  const itemsRowsTable = items.map(it => `
+      <tr>
+        <td>${_htmlEsc(it.name || "")}</td>
+        <td class="num">${it.qty || 1}</td>
+        <td class="num">${Number(it.price || 0).toFixed(2)}</td>
+        <td class="num">${(Number(it.price || 0) * Number(it.qty || 1)).toFixed(2)}</td>
+      </tr>`).join("");
+
+  // ── ticket واحد (يُكرَّر copies مرات) ───────────────────────────────────
+  const buildThermalTicket = () => `<div class="ticket th">
+    <div class="th-head">
+      <div class="th-store">${_htmlEsc(storeName)}</div>
+      <div class="th-meta">${_htmlEsc(dateStr)} • ${_htmlEsc(timeStr)}</div>
+    </div>
+    <div class="th-orderid">طلب رقم: <b>${_htmlEsc(orderId)}</b></div>
+    <div class="th-section">
+      <div class="th-row"><span>👤</span><span><b>${_htmlEsc(order.customerName || "—")}</b></span></div>
+      <div class="th-row"><span>📱</span><span dir="ltr">${_htmlEsc(fullPhone)}</span></div>
+      ${cleanAddress ? `<div class="th-row"><span>📍</span><span>${_htmlEsc(cleanAddress)}</span></div>` : ""}
+      ${mapsUrl ? `<div class="th-maps"><a href="${_htmlEsc(mapsUrl)}">🗺️ افتح الخريطة</a></div>` : ""}
+    </div>
+    <div class="th-divider">━━━ المنتجات ━━━</div>
+    <div class="items">${itemsRowsThermal}</div>
+    <div class="th-divider"></div>
+    <div class="th-totals">
+      <div class="th-row"><span>المجموع</span><span>${Number(order.subtotal ?? order.total ?? 0).toFixed(2)} ${currency}</span></div>
+      ${order.deliveryFee ? `<div class="th-row"><span>التوصيل</span><span>${Number(order.deliveryFee).toFixed(2)} ${currency}</span></div>` : ""}
+      ${order.discount ? `<div class="th-row"><span>الخصم</span><span>-${Number(order.discount).toFixed(2)} ${currency}</span></div>` : ""}
+      <div class="th-grand"><span>الإجمالي</span><span>${Number(order.total || 0).toFixed(2)} ${currency}</span></div>
+    </div>
+    <div class="th-divider">━━━━━━━━━━━━━</div>
+    ${order.notes || order.orderNotes ? `<div class="th-notes">📝 ${_htmlEsc(order.notes || order.orderNotes)}</div>` : ""}
+    ${dynRows ? `<table class="th-dyn"><tbody>${dynRows}</tbody></table>` : ""}
+    <div class="th-foot">شكراً لاختيارك ${_htmlEsc(storeName)} 💚</div>
+  </div>`;
+
+  const buildA4Ticket = () => `<div class="ticket a">
+    <div class="a-head">
+      <div>
+        <div class="a-store">${_htmlEsc(storeName)}</div>
+        <div class="a-meta">${_htmlEsc(dateStr)} — ${_htmlEsc(timeStr)}</div>
+      </div>
+      <div class="a-orderid">طلب رقم<br><b>${_htmlEsc(orderId)}</b></div>
+    </div>
+    <div class="a-customer">
+      <div><b>العميل:</b> ${_htmlEsc(order.customerName || "—")}</div>
+      <div><b>الجوال:</b> <span dir="ltr">${_htmlEsc(fullPhone)}</span></div>
+      ${cleanAddress ? `<div><b>العنوان:</b> ${_htmlEsc(cleanAddress)}${mapsUrl ? ` — <a href="${_htmlEsc(mapsUrl)}">🗺️ خريطة</a>` : ""}</div>` : ""}
+    </div>
+    <table class="a-items">
+      <thead><tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+      <tbody>${itemsRowsTable}</tbody>
+    </table>
+    <div class="a-totals">
+      <div><span>المجموع</span><span>${Number(order.subtotal ?? order.total ?? 0).toFixed(2)} ${currency}</span></div>
+      ${order.deliveryFee ? `<div><span>التوصيل</span><span>${Number(order.deliveryFee).toFixed(2)} ${currency}</span></div>` : ""}
+      ${order.discount ? `<div><span>الخصم</span><span>-${Number(order.discount).toFixed(2)} ${currency}</span></div>` : ""}
+      <div class="a-grand"><span>الإجمالي الكلي</span><span>${Number(order.total || 0).toFixed(2)} ${currency}</span></div>
+    </div>
+    ${order.notes || order.orderNotes ? `<div class="a-notes"><b>📝 ملاحظات:</b> ${_htmlEsc(order.notes || order.orderNotes)}</div>` : ""}
+    ${dynRows ? `<table class="a-dyn"><tbody>${dynRows}</tbody></table>` : ""}
+    <div class="a-foot">شكراً لاختيارك ${_htmlEsc(storeName)} 💚</div>
+  </div>`;
+
+  const ticket = size === "thermal" ? buildThermalTicket() : buildA4Ticket();
+  const all    = Array(copies).fill(ticket).join('<div class="page-break"></div>');
+
+  // CSS لكل size — @page محدد بالـ mm
+  const pageCss = size === "thermal" ? `
+    @page { size: 80mm auto; margin: 2mm; }
+    body { width: 76mm; }
+  ` : size === "a5" ? `
+    @page { size: A5; margin: 8mm; }
+  ` : `
+    @page { size: A4; margin: 12mm; }
+  `;
+
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head>
+<meta charset="UTF-8">
+<title>طباعة ${_htmlEsc(orderId)}</title>
+<style>
+  ${pageCss}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Tahoma", Arial, sans-serif; direction: rtl; color: #000; background: #f3f4f6; padding: 14px; }
+  .toolbar { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; max-width:480px; margin-left:auto; margin-right:auto; }
+  .toolbar b { font-size:14px; }
+  .toolbar button { background:#1e3a8a; color:#fff; border:none; padding:9px 18px; border-radius:8px; cursor:pointer; font-weight:700; font-size:13px; }
+  .toolbar button.ghost { background:#fff; color:#1e3a8a; border:1px solid #1e3a8a; }
+  .toolbar a { color:#1e3a8a; text-decoration:none; font-size:12px; font-weight:700; }
+  .page-break { page-break-after: always; }
+  .ticket.th { background:#fff; max-width:76mm; margin: 8px auto; padding: 8px; font-size: 12px; line-height: 1.5; border:1px dashed #d1d5db; }
+  .th-head { text-align:center; border-bottom:2px dashed #000; padding-bottom:6px; margin-bottom:6px; }
+  .th-store { font-size: 16px; font-weight: 900; }
+  .th-meta { font-size: 10px; color:#374151; margin-top:3px; }
+  .th-orderid { text-align:center; font-size: 13px; padding: 4px; background:#f3f4f6; margin: 4px 0; border-radius: 4px; }
+  .th-section { margin: 6px 0; }
+  .th-row { display:flex; justify-content:space-between; gap:8px; padding:1px 0; }
+  .th-row > span:first-child { font-weight:700; flex-shrink:0; }
+  .th-divider { text-align:center; font-weight:700; margin: 5px 0; font-size: 11px; }
+  .items .item { margin: 3px 0; padding: 2px 0; border-bottom: 1px dotted #d1d5db; }
+  .items .ix { display:flex; justify-content:space-between; gap:6px; }
+  .items .iname { font-weight:700; flex:1; }
+  .items .iname small { font-weight:400; color:#4b5563; }
+  .items .iprice { font-weight:800; }
+  .items .inotes { font-size: 10px; color:#6b7280; padding-right: 6px; }
+  .th-totals { margin: 4px 0; }
+  .th-grand { display:flex; justify-content:space-between; font-weight: 900; font-size: 14px; border-top: 2px dashed #000; margin-top: 4px; padding-top: 4px; }
+  .th-notes { background:#fef3c7; padding:5px; margin: 5px 0; border-radius: 4px; font-size: 11px; }
+  .th-dyn { width:100%; font-size: 10px; margin: 5px 0; }
+  .th-dyn td { padding: 1px 2px; border-bottom: 1px dotted #d1d5db; }
+  .th-dyn td.lbl { font-weight:700; width: 35%; }
+  .th-foot { text-align:center; font-size: 10px; color:#4b5563; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #d1d5db; }
+  .th-maps { text-align:center; padding: 3px 0; }
+  .th-maps a { color:#1e40af; font-size: 10px; text-decoration: underline; }
+
+  /* A4/A5 */
+  .ticket.a { background:#fff; max-width: 700px; margin: 12px auto; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border-radius: 8px; }
+  .a-head { display:flex; justify-content:space-between; align-items:center; border-bottom: 3px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 14px; }
+  .a-store { font-size: 22px; font-weight: 900; color:#1e3a8a; }
+  .a-meta { font-size: 12px; color:#6b7280; margin-top: 3px; }
+  .a-orderid { text-align:left; font-size:12px; color:#374151; }
+  .a-orderid b { font-size: 16px; color:#1e3a8a; }
+  .a-customer { background:#f9fafb; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px; line-height: 1.9; }
+  .a-customer a { color:#1e40af; text-decoration: underline; }
+  .a-items { width:100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  .a-items th { background:#1e3a8a; color:#fff; padding: 8px; text-align: right; }
+  .a-items td { padding: 7px 8px; border: 1px solid #e5e7eb; }
+  .a-items td.num { text-align: center; font-weight: 700; }
+  .a-totals { margin-top: 10px; font-size: 14px; }
+  .a-totals > div { display:flex; justify-content:space-between; padding: 4px 0; }
+  .a-grand { font-weight: 900; font-size: 17px; border-top: 2px solid #1e3a8a; margin-top: 6px; padding-top: 8px; color:#1e3a8a; }
+  .a-notes { background:#fef3c7; padding: 10px 14px; border-radius: 8px; margin: 12px 0; font-size: 13px; }
+  .a-dyn { width:100%; font-size: 12px; margin-top: 10px; }
+  .a-dyn td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; }
+  .a-dyn td.lbl { font-weight: 700; background:#f9fafb; width: 30%; }
+  .a-foot { text-align:center; font-size: 12px; color:#6b7280; margin-top: 14px; padding-top: 10px; border-top: 1px solid #e5e7eb; }
+
+  @media print {
+    body { background:#fff; padding: 0; }
+    .toolbar { display:none !important; }
+    .ticket { box-shadow: none; margin: 0; }
+  }
+</style></head><body>
+<div class="toolbar">
+  <b>🧾 طباعة ${_htmlEsc(orderId)}</b>
+  <button onclick="window.print()">🖨️ طباعة</button>
+  <button class="ghost" onclick="changeSize('thermal')">📜 حراري 80mm</button>
+  <button class="ghost" onclick="changeSize('a5')">📄 A5</button>
+  <button class="ghost" onclick="changeSize('a4')">📄 A4</button>
+  <button class="ghost" onclick="changeCopies()">📋 نسخ: ${copies}</button>
+</div>
+${all}
+<script>
+function changeSize(s){ const u=new URL(location.href); u.searchParams.set("size",s); location.href=u.toString(); }
+function changeCopies(){ const n=prompt("عدد النسخ (1-5)?", ${copies}); if(n){const u=new URL(location.href); u.searchParams.set("copies",n); location.href=u.toString();} }
+window.addEventListener("load", function(){ setTimeout(function(){ window.print(); }, 350); });
+<\/script>
+</body></html>`;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(html);
+});
+
 router.get("/store/orders", auth, (req, res) => {
   const orders = readOrders(req.storeId);
   orders.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
