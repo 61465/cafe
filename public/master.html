@@ -101,6 +101,10 @@ input,select,textarea{font-family:inherit}
   max-width:calc(100vw - var(--sidebar));
 }
 
+/* Mobile header — مخفي على الديسكتوب، يظهر على الموبايل في @media */
+.mobile-header{display:none}
+.nav-backdrop{display:none}
+
 /* ─── Page Header ────────────────────────────────────────────── */
 .page-header{
   display:flex;justify-content:space-between;align-items:center;
@@ -557,12 +561,87 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
 
   /* ── App Layout ───────────────────────────────────────────── */
   #appScreen{flex-direction:column}
-  .sidebar{display:none}
-  .bottom-nav{display:block}
+
+  /* الـ sidebar يصبح drawer ينزلق من اليمين بدل bottom-nav */
+  .sidebar{
+    display:flex !important;
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:0;
+    width:min(82vw, 320px);
+    z-index:1500;
+    transform:translateX(100%);
+    transition:transform .28s ease;
+    box-shadow:-12px 0 30px rgba(0,0,0,.3);
+  }
+  .sidebar.open{transform:translateX(0)}
+
+  /* خلفية شفافة تُغلق الدراور */
+  .nav-backdrop{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.55);
+    z-index:1400;
+    backdrop-filter:blur(2px);
+    -webkit-backdrop-filter:blur(2px);
+  }
+  .nav-backdrop.open{display:block}
+
+  /* Header موبايل مع زر ☰ */
+  .mobile-header{
+    display:flex !important;
+    position:sticky;
+    top:0;
+    left:0;
+    right:0;
+    height:56px;
+    background:linear-gradient(135deg,var(--green-dark),var(--green));
+    color:#fff;
+    align-items:center;
+    padding:0 14px;
+    z-index:900;
+    box-shadow:0 2px 10px rgba(0,0,0,.15);
+    gap:12px;
+  }
+  .mobile-header .menu-btn{
+    background:rgba(255,255,255,.15);
+    border:none;
+    color:#fff;
+    width:40px;
+    height:40px;
+    border-radius:9px;
+    font-size:20px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+  }
+  .mobile-header .menu-btn:active{background:rgba(255,255,255,.3)}
+  .mobile-header .mh-title{
+    font-size:15px;
+    font-weight:800;
+    line-height:1.2;
+    flex:1;
+    min-width:0;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .mobile-header .mh-sub{
+    font-size:10.5px;
+    opacity:.85;
+    display:block;
+    font-weight:500;
+  }
+
+  .bottom-nav{display:none !important}
   .main-wrap{
     margin-right:0;
     width:100%;
-    padding:0 0 72px;
+    padding:0;
     min-height:100vh;
     max-width:100vw;
     overflow-x:hidden;
@@ -820,7 +899,19 @@ input:checked + .toggle-slider:before{transform:translateX(22px)}
 <!-- ════════════════════════════════════ APP ═══════════════════════════════════ -->
 <div id="appScreen" style="display:none">
 
-  <!-- Sidebar -->
+  <!-- Mobile Header (يظهر فقط على الموبايل) -->
+  <header class="mobile-header">
+    <button class="menu-btn" onclick="toggleMobileNav()" aria-label="القائمة">☰</button>
+    <div style="flex:1;min-width:0">
+      <div class="mh-title">منصة ثواني</div>
+      <span class="mh-sub" id="mhCurrentView">لوحة التحكم</span>
+    </div>
+  </header>
+
+  <!-- Backdrop لإغلاق الدراور بالضغط على الفراغ -->
+  <div class="nav-backdrop" onclick="toggleMobileNav(false)"></div>
+
+  <!-- Sidebar (يتحول لـ drawer على الموبايل) -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <img src="/logo-transparent-80.png" alt="منصة ثواني" style="height:48px;display:block;margin-bottom:6px;filter:brightness(0) invert(1)" onerror="this.style.display='none'">
@@ -2107,7 +2198,32 @@ async function loadOwnerSettings() {
 }
 
 // ─── Navigation ────────────────────────────────────────────────────────────────
+// ─── Mobile drawer (☰ → sidebar ينزلق من اليمين) ───────────────────────────
+function toggleMobileNav(force) {
+  const sb = document.querySelector(".sidebar");
+  const bd = document.querySelector(".nav-backdrop");
+  if (!sb || !bd) return;
+  const willOpen = (typeof force === "boolean") ? force : !sb.classList.contains("open");
+  sb.classList.toggle("open", willOpen);
+  bd.classList.toggle("open", willOpen);
+  document.body.style.overflow = willOpen ? "hidden" : "";
+}
+
+// أسماء الـ views لتحديث الـ header الموبايل
+const _VIEW_LABELS = {
+  dash:"لوحة التحكم", stores:"إدارة المتاجر", plans:"الباقات والأسعار",
+  bank:"حسابي البنكي", welcome:"رسالة الترحيب", guide:"دليل الإعداد",
+  leads:"عملاء المنصة", pending:"طلبات الاشتراك", tickets:"تذاكر الدعم",
+  growth:"نمو المنصة", platformBot:"بوت المنصة",
+};
+
 function showView(view) {
+  // أغلق الـ drawer على الموبايل بعد الاختيار
+  toggleMobileNav(false);
+  // حدّث عنوان الـ header الموبايل
+  const mhEl = document.getElementById("mhCurrentView");
+  if (mhEl && _VIEW_LABELS[view]) mhEl.textContent = _VIEW_LABELS[view];
+
   const views = ["dash","stores","plans","bank","welcome","guide","leads","pending","tickets","growth","platformBot"];
   views.forEach(v => {
     const el = document.getElementById(v + "View");
