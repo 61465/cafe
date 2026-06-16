@@ -108,8 +108,8 @@ input,select,textarea{font-family:inherit}
 /* عطّل sidebar toggle من ux-enhancements.js — استبدلناه بـ mobile-header الخاص بنا */
 #uxSidebarToggle{display:none !important}
 
-/* 🔧 إصلاح حرج: mobile-fixes.css يطبق display:flex!important على عدة elements
-   (.overlay, #appScreen, #loginScreen) — مما يهزم inline style="display:none".
+/* 🔧 إصلاح حرج: mobile-fixes.css يفرض display:flex!important على عدة elements
+   (.overlay, #appScreen, #loginScreen) — يهزم inline style="display:none".
    نُعيد الاحترام لـ inline display:none عبر attribute selector + !important. */
 [style*="display:none"][id="loginScreen"],
 [style*="display: none"][id="loginScreen"],
@@ -117,6 +117,16 @@ input,select,textarea{font-family:inherit}
 [style*="display: none"][id="appScreen"],
 .overlay[style*="display:none"],
 .overlay[style*="display: none"]{display:none !important}
+
+/* الـ login screen يجب أن يغطي كل شيء (appScreen + mobile-header + sidebar)
+   عند العرض، فلا تتداخل ولا تضرب click events */
+@media(max-width:768px){
+  #loginScreen:not([style*="display:none"]):not([style*="display: none"]){
+    position:fixed !important;
+    inset:0 !important;
+    z-index:99999 !important;
+  }
+}
 /* اعتبر الـ media query من ux-enhancements لاغ ـ نستخدم آليتنا */
 body.ux-sidebar-hidden .sidebar{transform:none !important}
 @media(max-width:900px){
