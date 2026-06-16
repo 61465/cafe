@@ -105,8 +105,11 @@ input,select,textarea{font-family:inherit}
 .mobile-header{display:none}
 .nav-backdrop{display:none}
 
-/* عطّل sidebar toggle من ux-enhancements.js — استبدلناه بـ mobile-header الخاص بنا */
-#uxSidebarToggle{display:none !important}
+/* sidebar toggle من ux-enhancements.js — مخفي فقط على الموبايل (لأن mobile-header
+   عندنا زر ☰ خاص). على الديسكتوب يبقى ظاهراً لإخفاء/إظهار القائمة الجانبية. */
+@media(max-width:768px){
+  #uxSidebarToggle{display:none !important}
+}
 
 /* 🔧 إصلاح حرج: mobile-fixes.css يفرض display:flex!important على عدة elements
    (.overlay, #appScreen, #loginScreen) — يهزم inline style="display:none".
