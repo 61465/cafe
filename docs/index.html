@@ -420,6 +420,14 @@ footer a:hover{opacity:.8}
 .rfield input,.rfield select{width:100%;padding:13px 16px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;direction:rtl;outline:none;transition:.2s;background:#fff;color:var(--text)}
 .rfield input:focus,.rfield select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(22,163,74,.12)}
 .reg-plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:8px}
+.reg-track-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:8px}
+.rt-card{border:2px solid var(--border);border-radius:var(--radius);padding:18px 12px;text-align:center;cursor:pointer;transition:.3s;position:relative;overflow:visible;background:#fff}
+.rt-card:hover{border-color:var(--gold);transform:translateY(-3px);box-shadow:var(--shadow)}
+.rt-card.sel{border-color:var(--gold);background:linear-gradient(135deg,#fff,rgba(201,162,75,.07));box-shadow:0 0 0 3px rgba(201,162,75,.18)}
+.rt-badge{position:absolute;top:-11px;right:50%;transform:translateX(50%);background:var(--gold);color:#fff;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap}
+.rt-emoji{font-size:30px;margin-bottom:6px}
+.rt-name{font-size:15px;font-weight:900;color:var(--g1);margin-bottom:4px}
+.rt-desc{font-size:12px;color:var(--text3);line-height:1.6}
 .rp-card{border:2px solid var(--border);border-radius:var(--radius);padding:20px 10px;text-align:center;cursor:pointer;transition:.3s;position:relative;overflow:visible}
 .rp-card:hover{border-color:var(--green);transform:translateY(-4px);box-shadow:var(--shadow)}
 .rp-card.sel{border-color:var(--green);background:var(--green-lt);box-shadow:0 0 0 3px rgba(22,163,74,.15)}
@@ -441,7 +449,7 @@ footer a:hover{opacity:.8}
 .reg-success h3{font-size:26px;font-weight:900;color:var(--g2);margin-bottom:10px}
 .reg-success p{color:var(--text2);line-height:1.8;max-width:420px;margin:0 auto 28px;font-size:15px}
 @media(max-width:640px){
-  .reg-plan-grid{grid-template-columns:1fr}
+  .reg-plan-grid,.reg-track-grid{grid-template-columns:1fr}
   .reg-body{padding:24px 18px}
   .reg-tab{font-size:11px;padding:12px 4px}
   .reg-tab-n{width:22px;height:22px;font-size:11px}
@@ -461,7 +469,6 @@ footer a:hover{opacity:.8}
       <li><a href="#features">المميزات</a></li>
       <li><a href="#systems">السلة 🛍️ vs البوت 🤖</a></li>
       <li><a href="#how">كيف يعمل</a></li>
-      <li><a href="#demo">جرّب البوت</a></li>
       <li><a href="#pricing">الباقات</a></li>
       <li><a href="#faq">الأسئلة</a></li>
     </ul>
@@ -474,8 +481,8 @@ footer a:hover{opacity:.8}
   </div>
   <div class="mob-nav" id="mobNav">
     <a href="#features" onclick="toggleMenu()">✨ المميزات</a>
+    <a href="#systems" onclick="toggleMenu()">🛍️ vs 🤖</a>
     <a href="#how" onclick="toggleMenu()">🛠️ كيف يعمل</a>
-    <a href="#demo" onclick="toggleMenu()">🎮 جرّب البوت</a>
     <a href="#pricing" onclick="toggleMenu()">💰 الباقات</a>
     <a href="#faq" onclick="toggleMenu()">❓ الأسئلة الشائعة</a>
     <a href="#register" onclick="toggleMenu()">🚀 سجّل الآن</a>
@@ -495,7 +502,7 @@ footer a:hover{opacity:.8}
     <h1>حوّل واتساب إلى<br><em>موظف طلبات لا يتعب</em> 🚀</h1>
     <p class="hero-sub">استقبل طلبات نشاطك التجاري تلقائياً على واتساب — بوت ذكي يعرض منتجاتك وخدماتك، يأخذ الطلبات والحجوزات، يؤكدها، ويُشعرك فوراً. كل هذا برقمك الأصلي في أقل من 5 دقائق.</p>
     <div class="hero-btns">
-      <a class="btn-wa" href="#demo">🎮 جرّب البوت الآن</a>
+      <a class="btn-wa" href="#register">🚀 ابدأ اشتراكك</a>
       <a class="btn-ghost" href="#how">كيف يعمل؟ ▾</a>
     </div>
     <div class="hero-stats">
@@ -776,52 +783,7 @@ footer a:hover{opacity:.8}
 </section>
 
 <!-- ════════════════ DEMO ════════════════ -->
-<section id="demo">
-  <div class="container">
-    <div class="ctr">
-      <span class="tag">🎮 تجربة مباشرة</span>
-      <h2 class="sec-h">جرّب البوت بنفسك الآن</h2>
-      <p class="sec-p">هذا هو نفس البوت الذي سيستخدمه عملاؤك — كلّمه كأنك عميل في مقهى</p>
-    </div>
-    <div class="demo-wrap reveal">
-      <div class="demo-info">
-        <h3>هذا ما يراه عملاؤك كل يوم</h3>
-        <p>من أول رسالة حتى تأكيد الطلب — البوت يتولى كل شيء بشكل احترافي يعكس صورة مميزة لمشروعك</p>
-        <ul class="demo-feat">
-          <li>استقبال طلبات غير محدودة على مدار الساعة</li>
-          <li>عرض المنيو بشكل تفاعلي ومنظم بالصور</li>
-          <li>تأكيد الطلب مع ملخص كامل وفاتورة للعميل</li>
-          <li>إشعار فوري لصاحب المحل بكل طلب جديد</li>
-          <li>لوحة تحكم لإدارة وتتبع جميع الطلبات</li>
-        </ul>
-        <div class="demo-action">
-          <a class="btn-wa" href="#pricing">ابدأ الآن بباقتك 🚀</a>
-        </div>
-      </div>
-      <div>
-        <div class="wa-widget">
-          <div class="wa-hdr">
-            <div class="wa-av">☕</div>
-            <div class="wa-inf">
-              <strong>مقهى النخيل 🌴</strong>
-              <small><span class="online"></span> متصل الآن</small>
-            </div>
-          </div>
-          <div class="wa-msgs" id="waMsgs">
-            <div class="demo-start-wrap">
-              <button class="btn-start" id="startBtn">▶️ ابدأ التجربة</button>
-              <p style="font-size:12px;color:#aaa;margin-top:8px">اضغط لبدء محادثة تجريبية</p>
-            </div>
-          </div>
-          <div class="wa-bar">
-            <button class="wa-snd" id="sndBtn" onclick="sendMsg()" disabled>➤</button>
-            <input class="wa-in" id="waIn" placeholder="اكتب رسالتك..." disabled onkeydown="if(event.key==='Enter')sendMsg()">
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+<!-- 📦 قسم #demo (تجربة البوت التفاعلية) — محفوظ في _backup_demo_section.html. يمكن إعادته لاحقاً. -->
 
 <!-- ════════════════ النظامان: السلة + البوت ════════════════ -->
 <style>
@@ -882,12 +844,14 @@ footer a:hover{opacity:.8}
         <ul>
           <li>صفحة منتجات احترافية بصور وأسعار</li>
           <li>سلة شراء مع تعديل الكميات</li>
-          <li>checkout بسيط (اسم + جوال + عنوان)</li>
+          <li>checkout بسيط (اسم + جوال + عنوان + GPS)</li>
           <li>تتبع الطلب من رابط بدون login</li>
-          <li>🆕 بحث + فلاتر بالفئة والسعر</li>
-          <li>🆕 مشاركة المتجر (واتس + تويتر + تلغرام)</li>
-          <li>🆕 "الأكثر مبيعاً" تلقائياً من الـ orders</li>
-          <li>🆕 "طلباتي" بـ lookup الجوال (بدون تسجيل)</li>
+          <li>🆕 <b>3 طرق دفع</b> — نقداً / تحويل بنكي (IBAN) / STC Pay</li>
+          <li>🆕 <b>كوبونات خصم</b> مخصصة للسلة (scope منفصل)</li>
+          <li>🆕 <b>تغليف هدايا</b> مع رسم اختياري (للورد/الهدايا)</li>
+          <li>بحث + فلاتر بالفئة والسعر</li>
+          <li>مشاركة المتجر (واتس + تويتر + تلغرام)</li>
+          <li>"الأكثر مبيعاً" تلقائياً + "طلباتي" بـ lookup الجوال</li>
           <li>يعمل بدون تطبيق واتس على جوال العميل</li>
         </ul>
         <div class="sys-when">
@@ -905,12 +869,13 @@ footer a:hover{opacity:.8}
           <li>قائمة منتجات عبر أزرار/أرقام</li>
           <li>سلة محادثة (إضافة/حذف بأوامر)</li>
           <li>🧠 ذكاء اصطناعي (Groq+Claude+Gemini) يفهم العربية</li>
-          <li>إشعارات تلقائية للمالك عند طلب جديد</li>
-          <li>أوامر سريعة للمالك من الواتس (قبول/رفض/تم)</li>
-          <li>🆕 12 قالب بث جاهز (ترحيب/خصم/رمضان/VIP)</li>
-          <li>حماية متقدمة من حظر الرقم</li>
-          <li>تذكير السلات المتروكة بعد 30 دقيقة</li>
-          <li>handoff تلقائي للإنسان عند الحاجة</li>
+          <li>🆕 <b>نظام حجوزات</b> للصالونات/العيادات + تذكير قبل 24س</li>
+          <li>🆕 <b>تنبيهات مخزون منخفض</b> للأكواد الرقمية (gaming)</li>
+          <li>🆕 <b>إضافات (toppings)</b> للأطعمة والمشروبات</li>
+          <li>إشعارات تلقائية للمالك + أوامر سريعة (قبول/رفض/تم)</li>
+          <li>12 قالب بث جاهز + حماية من حظر الرقم</li>
+          <li>تذكير السلات المتروكة + handoff للإنسان</li>
+          <li>نقاط ولاء + تقييمات بعد التسليم</li>
         </ul>
         <div class="sys-when">
           <div class="sys-when-h">🎯 الأنسب لـ:</div>
@@ -978,42 +943,7 @@ footer a:hover{opacity:.8}
       </div>
     </div>
 
-    <!-- ⭐ Master override + trial -->
-    <div style="margin-top:48px;padding:28px;background:linear-gradient(135deg,#fff,var(--green-lt));border-radius:var(--radius-lg);border:1px solid var(--border2)">
-      <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:28px;align-items:center" class="trial-grid">
-        <div>
-          <span class="tag">🎁 جربها الآن</span>
-          <h3 style="font-size:24px;font-weight:900;color:var(--g1);margin:10px 0 12px">جرّب المنصة كاملة قبل الاشتراك</h3>
-          <p style="color:var(--text2);font-size:14.5px;line-height:1.8;margin-bottom:18px">حساب تجربة جاهز بباقة <b>متكاملة</b> 📦 (سلة + بوت) — افتح لوحة الأدمن، تصفّح المتجر العلني، أضف طلباً تجريبياً، شارك على واتس. كل المميزات الجديدة مفعّلة:</p>
-          <ul style="list-style:none;padding:0;font-size:13.5px;color:var(--text2);line-height:2">
-            <li>✅ تبديل مسار الاشتراك من الماستر فوراً (سلة/بوت/متكامل) — يظهر للتاجر بـ <b>30 ثانية</b></li>
-            <li>✅ Track badge ملوّن لكل متجر في لوحة الإدارة</li>
-            <li>✅ 12 قالب بث جاهز للاستخدام</li>
-            <li>✅ بحث + فلاتر + الأكثر مبيعاً تلقائياً</li>
-            <li>✅ مشاركة المتجر على واتس + تويتر + تلغرام</li>
-            <li>✅ NEXUS AI متعدد المزودين (Groq + Claude + Gemini)</li>
-            <li>✅ Backup يومي + rotation تلقائي (14 يوم + 12 أسبوع)</li>
-          </ul>
-        </div>
-        <div style="background:#fff;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)">
-          <div style="font-size:13px;color:var(--gray);font-weight:700;margin-bottom:14px">🔑 بيانات الدخول التجريبية:</div>
-          <div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:12px">
-            <div style="font-size:11px;color:var(--gray);margin-bottom:4px">رقم الجوال (لـ login التاجر)</div>
-            <div style="font-family:monospace;font-size:15px;font-weight:700;color:var(--g1);direction:ltr;text-align:left">201278632120</div>
-          </div>
-          <div style="background:var(--bg);padding:14px;border-radius:10px;margin-bottom:18px">
-            <div style="font-size:11px;color:var(--gray);margin-bottom:4px">كلمة المرور</div>
-            <div style="font-family:monospace;font-size:15px;font-weight:700;color:var(--g1);direction:ltr;text-align:left">test1278</div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <a href="https://thawani.tail19ddab.ts.net/login.html" target="_blank" style="background:var(--green);color:#fff;padding:11px 18px;border-radius:10px;text-align:center;font-weight:800;text-decoration:none;font-size:14px">🎛️ افتح لوحة التاجر</a>
-            <a href="https://thawani.tail19ddab.ts.net/store/store_1782065514953" target="_blank" style="background:var(--wa);color:#fff;padding:11px 18px;border-radius:10px;text-align:center;font-weight:800;text-decoration:none;font-size:14px">🛍️ افتح المتجر العلني</a>
-          </div>
-          <p style="font-size:11px;color:var(--gray);margin-top:12px;text-align:center">باقة متقدمة 👑 • مسار متكامل 📦 • نشط حتى 2099</p>
-        </div>
-      </div>
-    </div>
-    <style>@media(max-width:780px){.trial-grid{grid-template-columns:1fr !important}}</style>
+    <!-- 📦 بلوك "جربها الآن" — محفوظ في _backup_demo_section.html. لإعادته انسخه من هناك. -->
   </div>
 </section>
 
@@ -1150,7 +1080,28 @@ footer a:hover{opacity:.8}
         </div>
         <!-- Step 3 -->
         <div class="reg-step" id="rs3">
-          <h3 class="reg-h">💳 اختر باقتك</h3>
+          <h3 class="reg-h">📦 اختر نظامك</h3>
+          <p class="reg-s">حدّد القناة التي تريد البيع من خلالها — يمكنك التبديل لاحقاً</p>
+          <div class="reg-track-grid">
+            <div class="rt-card" id="rtc-cart" onclick="pickTrack('cart',this)">
+              <div class="rt-emoji">🛍️</div>
+              <div class="rt-name">سلة فقط</div>
+              <div class="rt-desc">متجر علني + checkout بسيط<br><small style="opacity:.7">بدون بوت واتس</small></div>
+            </div>
+            <div class="rt-card sel" id="rtc-bundle" onclick="pickTrack('bundle',this)">
+              <div class="rt-badge">⭐ الأكثر طلباً</div>
+              <div class="rt-emoji">📦</div>
+              <div class="rt-name">متكامل</div>
+              <div class="rt-desc">السلة + البوت معاً<br><small style="opacity:.7">طلبات من القناتين، إدارة موحّدة</small></div>
+            </div>
+            <div class="rt-card" id="rtc-bot" onclick="pickTrack('bot',this)">
+              <div class="rt-emoji">🤖</div>
+              <div class="rt-name">بوت فقط</div>
+              <div class="rt-desc">بوت واتس + بث + ولاء<br><small style="opacity:.7">بدون متجر علني</small></div>
+            </div>
+          </div>
+
+          <h3 class="reg-h" style="margin-top:28px">💳 اختر باقتك</h3>
           <p class="reg-s">جميع الباقات تشمل ربط واتساب فوري ولوحة تحكم كاملة — يمكنك الترقية في أي وقت</p>
           <div class="reg-plan-grid">
             <div class="rp-card" id="rpc-starter" onclick="pickPlan('starter',this)">
@@ -1413,7 +1364,7 @@ const ro=new IntersectionObserver(es=>es.forEach(e=>{
 document.querySelectorAll(".reveal").forEach(el=>ro.observe(el));
 
 // ══ REGISTRATION ══
-const regD={name:"",phone:"",store:"",type:"",city:"",plan:"pro"};
+const regD={name:"",phone:"",store:"",type:"",city:"",plan:"pro",track:"bundle"};
 
 function goRegister(plan){
   document.getElementById("register").scrollIntoView({behavior:"smooth"});
@@ -1461,6 +1412,11 @@ function pickPlan(plan,el){
   document.querySelectorAll(".rp-card").forEach(c=>c.classList.remove("sel"));
   if(el)el.classList.add("sel");
 }
+function pickTrack(track,el){
+  regD.track=track;
+  document.querySelectorAll(".rt-card").forEach(c=>c.classList.remove("sel"));
+  if(el)el.classList.add("sel");
+}
 async function submitReg(){
   const btn=document.querySelector(".btn-rn");
   if(btn){btn.disabled=true;btn.textContent="⏳ جاري الإرسال...";}
@@ -1469,7 +1425,7 @@ async function submitReg(){
     const r=await fetch(SERVER_URL+"/api/register-request",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name:regD.name,phone:regD.phone,store:regD.store,type:regD.type,city:regD.city,plan:regD.plan})
+      body:JSON.stringify({name:regD.name,phone:regD.phone,store:regD.store,type:regD.type,city:regD.city,plan:regD.plan,track:regD.track})
     });
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||"فشل الإرسال");
@@ -1480,7 +1436,8 @@ async function submitReg(){
   }catch(e){
     alert("حدث خطأ: "+e.message+"\nسيتم تحويلك لواتساب كبديل.");
     const pn={starter:"🌱 الأساسية — 80 ر.س/شهر",pro:"⭐ الاحترافية — 150 ر.س/شهر",premium:"👑 المتقدمة — 250 ر.س/شهر"};
-    const msg=`🤖 طلب اشتراك جديد — منصة ثواني\n\nالاسم: ${regD.name}\nواتساب: ${regD.phone}\nالمتجر: ${regD.store}\nنوع المشروع: ${regD.type}\nالمدينة: ${regD.city||"—"}\nالباقة: ${pn[regD.plan]}`;
+    const tn={cart:"🛍️ سلة فقط",bot:"🤖 بوت فقط",bundle:"📦 متكامل (سلة+بوت)"};
+    const msg=`🤖 طلب اشتراك جديد — منصة ثواني\n\nالاسم: ${regD.name}\nواتساب: ${regD.phone}\nالمتجر: ${regD.store}\nنوع المشروع: ${regD.type}\nالمدينة: ${regD.city||"—"}\nالنظام: ${tn[regD.track]||"—"}\nالباقة: ${pn[regD.plan]}`;
     window.open(`https://wa.me/966508572902?text=${encodeURIComponent(msg)}`,"_blank");
     if(btn){btn.disabled=false;btn.textContent="📱 أرسل طلب الاشتراك";}
   }
